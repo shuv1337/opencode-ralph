@@ -41,7 +41,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
 
 ## Phase 2: Unit Tests - Plan Parser (`src/plan.ts`)
 
-- [ ] **2.1** Test `parsePlan()` with non-existent file:
+- [x] **2.1** Test `parsePlan()` with non-existent file:
   - Should return `{ done: 0, total: 0 }`
   - Verify no error thrown
 
