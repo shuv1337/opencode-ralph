@@ -130,7 +130,24 @@ export async function runLoop(
         if (event.type === "message.part.updated") {
           const part = event.properties.part;
           if (part.sessionID !== sessionId) continue;
-          // TODO: Implement tool event mapping (10.16)
+
+          // Tool event mapping (10.16)
+          if (part.type === "tool" && part.state.status === "completed") {
+            const toolName = part.tool;
+            const title =
+              part.state.title ||
+              (Object.keys(part.state.input).length > 0
+                ? JSON.stringify(part.state.input)
+                : "Unknown");
+
+            callbacks.onEvent({
+              iteration,
+              type: "tool",
+              icon: toolName,
+              text: title,
+              timestamp: part.state.time.end,
+            });
+          }
         }
 
         // TODO: Implement session completion detection (10.17)

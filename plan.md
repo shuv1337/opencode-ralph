@@ -451,7 +451,7 @@ opencode-ralph/
   - Iterate over `events.stream` with `for await`
   - Filter events for current session ID
 
-- [ ] **10.16** Implement tool event mapping:
+- [x] **10.16** Implement tool event mapping:
   - Check for `message.part.updated` events
   - Extract tool name and state from part
   - Map to `ToolEvent` with appropriate icon
