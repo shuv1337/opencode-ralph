@@ -52,7 +52,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - Given 5 `- [x]` items
   - Should return `{ done: 5, total: 5 }`
 
-- [ ] **2.4** Test `parsePlan()` with all incomplete tasks:
+- [x] **2.4** Test `parsePlan()` with all incomplete tasks:
   - Given 3 `- [ ]` items
   - Should return `{ done: 0, total: 3 }`
 

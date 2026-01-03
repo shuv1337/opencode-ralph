@@ -1,9 +1,9 @@
 # All Incomplete Plan
 
-A plan where no tasks are completed yet.
+A plan where all tasks are still pending.
 
-## Pending Tasks
+## Tasks
 
-- [ ] First incomplete task
-- [ ] Second incomplete task
-- [ ] Third incomplete task
+- [ ] First pending task
+- [ ] Second pending task
+- [ ] Third pending task
