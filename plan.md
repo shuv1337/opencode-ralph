@@ -160,7 +160,7 @@ opencode-ralph/
   - Count `- [ ]` for not done
   - Return `{ done, total: done + notDone }`
 
-- [ ] **3.7** Create `src/lock.ts` with `LOCK_FILE` constant (`.ralph-lock`)
+- [x] **3.7** Create `src/lock.ts` with `LOCK_FILE` constant (`.ralph-lock`)
 
 - [ ] **3.8** Add `acquireLock(): Promise<boolean>` to `src/lock.ts`:
   - Check if lock file exists with `Bun.file(LOCK_FILE).exists()`
