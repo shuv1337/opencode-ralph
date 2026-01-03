@@ -92,7 +92,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - `formatDuration(0)` should return `"0s"`
   - `formatDuration(999)` should return `"0s"` (rounds down)
 
-- [ ] **3.5** Test `calculateEta()` with empty array:
+- [x] **3.5** Test `calculateEta()` with empty array:
   - `calculateEta([], 10)` should return `null`
 
 - [ ] **3.6** Test `calculateEta()` with single iteration:

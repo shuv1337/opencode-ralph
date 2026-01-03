@@ -43,4 +43,12 @@ describe("time utilities", () => {
       });
     });
   });
+
+  describe("calculateEta", () => {
+    describe("empty array", () => {
+      it("should return null when given an empty array", () => {
+        expect(calculateEta([], 10)).toBeNull();
+      });
+    });
+  });
 });
