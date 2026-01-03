@@ -73,7 +73,7 @@ opencode-ralph/
 
 ### Phase 2: Type Definitions
 
-- [ ] **2.1** Create `src/state.ts` with `PersistedState` type:
+- [x] **2.1** Create `src/state.ts` with `PersistedState` type:
 
   ```typescript
   export type PersistedState = {
