@@ -273,15 +273,15 @@ opencode-ralph/
   - Return a `<scrollbox>` with `stickyScroll={true}` and `stickyStart="bottom"`
   - Set `flexGrow={1}` to fill available space
 
-- [ ] **7.2** Add scrollbox styling to Log:
+- [x] **7.2** Add scrollbox styling to Log:
   - `rootOptions`: backgroundColor from colors.bg
   - `viewportOptions`: backgroundColor from colors.bgDark
   - Set vertical scrollbar visible with border color
 
-- [ ] **7.3** Add `<For each={events}>` inside scrollbox:
+- [x] **7.3** Add `<For each={events}>` inside scrollbox:
   - Render each event based on `event.type`
 
-- [ ] **7.4** Add separator rendering in Log:
+- [x] **7.4** Add separator rendering in Log:
   - When `event.type === "separator"`
   - Format: `── iteration {n} ──────────── {duration} · {commits} commit(s) ──`
   - Use `─` characters to create line effect
