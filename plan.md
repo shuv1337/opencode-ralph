@@ -55,7 +55,7 @@ opencode-ralph/
   - dependencies: `@opencode-ai/sdk`, `@opentui/core@0.1.67`, `@opentui/solid@0.1.67`, `solid-js@^1.9.0`, `yargs@^18.0.0`
   - devDependencies: `@types/bun@latest`, `typescript@^5.0.0`
 
-- [ ] **1.2** Create `tsconfig.json` with:
+- [x] **1.2** Create `tsconfig.json` with:
   - target: `ESNext`
   - module: `ESNext`
   - moduleResolution: `bundler`
