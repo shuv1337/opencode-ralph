@@ -339,14 +339,14 @@ opencode-ralph/
   - `q` key: call `onQuit()`
   - `Ctrl+C`: call `onQuit()`
 
-- [ ] **9.5** Compose App layout:
+- [x] **9.5** Compose App layout:
   - Outer `<box>` with `flexDirection="column"`, full height, bgDark background
   - `<Header>` with state props
   - `<Log>` with events prop, `flexGrow={1}`
   - `<Footer>` with commits, elapsed props
   - `<PausedOverlay>` with visible when status is "paused"
 
-- [ ] **9.6** Create `startApp` export function:
+- [x] **9.6** Create `startApp` export function:
   - Takes `AppProps`
   - Returns promise that resolves when app exits
   - Calls `render()` with App component and opentui options:

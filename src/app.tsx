@@ -18,6 +18,29 @@ type AppProps = {
  * Main App component with state signals.
  * Manages LoopState and elapsed time, rendering the full TUI layout.
  */
+/**
+ * Starts the TUI application and returns a promise that resolves when the app exits.
+ *
+ * @param props - The application props including options, persisted state, and quit handler
+ * @returns Promise that resolves when the app exits
+ */
+export function startApp(props: AppProps): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const onQuit = () => {
+      props.onQuit();
+      resolve();
+    };
+
+    render(
+      () => <App {...props} onQuit={onQuit} />,
+      {
+        targetFps: 30,
+        exitOnCtrlC: false,
+      }
+    );
+  });
+}
+
 export function App(props: AppProps) {
   // State signal for loop state
   const [state, setState] = createSignal<LoopState>({
