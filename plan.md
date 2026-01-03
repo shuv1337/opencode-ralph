@@ -557,7 +557,7 @@ opencode-ralph/
 
 ### Phase 13: Documentation
 
-- [ ] **13.1** Create `README.md` with project overview:
+- [x] **13.1** Create `README.md` with project overview:
   - Title and description
   - What is Ralph-driven development
   - Link to original blog post
