@@ -360,7 +360,7 @@ opencode-ralph/
   - Import types from state.ts
   - Import git and plan utilities
 
-- [ ] **10.2** Define `LoopCallbacks` type:
+- [x] **10.2** Define `LoopCallbacks` type:
 
   ```typescript
   type LoopCallbacks = {
