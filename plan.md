@@ -493,7 +493,7 @@ opencode-ralph/
   - Call `loadState()`
   - If state exists and `--reset` not passed, check plan file
 
-- [ ] **11.4** Add resume confirmation prompts:
+- [x] **11.4** Add resume confirmation prompts:
   - If state exists with same plan: `confirm("Continue previous run?")`
   - If state exists with different plan: `confirm("Reset state for new plan?")`
   - Handle user response appropriately

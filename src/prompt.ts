@@ -36,8 +36,8 @@ export async function confirm(message: string): Promise<boolean> {
         process.exit(1);
       }
 
-      // Return true for y/Y, false otherwise
-      resolve(char.toLowerCase() === "y");
+      // Return true for y/Y, false otherwise (use first char in case of newlines from piped input)
+      resolve(char.charAt(0).toLowerCase() === "y");
     };
 
     process.stdin.on("data", onData);

@@ -2,7 +2,8 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { acquireLock, releaseLock } from "./lock";
-import { loadState } from "./state";
+import { loadState, PersistedState } from "./state";
+import { confirm } from "./prompt";
 
 const argv = await yargs(hideBin(process.argv))
   .scriptName("ralph")
@@ -45,21 +46,38 @@ if (!lockAcquired) {
 // Load existing state if present
 const existingState = await loadState();
 
-// Check if we have existing state and --reset was not passed
-let hasExistingState = false;
-let existingStateMatchesPlan = false;
+// Determine the state to use after confirmation prompts
+let stateToUse: PersistedState | null = null;
+let shouldReset = argv.reset;
 
-if (existingState && !argv.reset) {
-  hasExistingState = true;
-  existingStateMatchesPlan = existingState.planFile === argv.plan;
+if (existingState && !shouldReset) {
+  if (existingState.planFile === argv.plan) {
+    // Same plan file - ask to continue
+    const continueRun = await confirm("Continue previous run?");
+    if (continueRun) {
+      stateToUse = existingState;
+    } else {
+      shouldReset = true;
+    }
+  } else {
+    // Different plan file - ask to reset
+    const resetForNewPlan = await confirm("Reset state for new plan?");
+    if (resetForNewPlan) {
+      shouldReset = true;
+    } else {
+      // User chose not to reset - exit gracefully
+      console.log("Exiting without changes.");
+      await releaseLock();
+      process.exit(0);
+    }
+  }
 }
 
-// TODO: Implement remaining startup logic in 11.4-11.9
+// TODO: Implement remaining startup logic in 11.5-11.9
 console.log("Ralph starting with options:", {
   plan: argv.plan,
   model: argv.model,
   prompt: argv.prompt,
-  reset: argv.reset,
-  hasExistingState,
-  existingStateMatchesPlan,
+  shouldReset,
+  stateToUse: stateToUse ? "resuming" : "fresh start",
 });
