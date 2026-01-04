@@ -2,12 +2,65 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { acquireLock, releaseLock } from "./lock";
-import { loadState, saveState, PersistedState, LoopOptions, trimEvents } from "./state";
+import { loadState, saveState, PersistedState, LoopOptions, trimEvents, LoopState, ToolEvent } from "./state";
 import { confirm } from "./prompt";
 import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp } from "./app";
 import { runLoop } from "./loop";
 import { initLog, log } from "./util/log";
+
+/**
+ * Creates a batched state updater that coalesces rapid setState calls.
+ * Updates arriving within the debounce window are merged and applied together.
+ */
+function createBatchStateUpdater(
+  setState: (updater: (prev: LoopState) => LoopState) => void,
+  debounceMs: number = 50
+) {
+  let pendingUpdates: Array<(prev: LoopState) => Partial<LoopState>> = [];
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  function flush() {
+    if (pendingUpdates.length === 0) return;
+    
+    const updates = pendingUpdates;
+    pendingUpdates = [];
+    timeoutId = null;
+
+    // Apply all pending updates in a single setState call
+    setState((prev) => {
+      let current = prev;
+      for (const update of updates) {
+        current = { ...current, ...update(current) };
+      }
+      return current;
+    });
+  }
+
+  return {
+    /**
+     * Queue a partial state update to be batched with other updates.
+     */
+    queueUpdate(updater: (prev: LoopState) => Partial<LoopState>) {
+      pendingUpdates.push(updater);
+      
+      if (timeoutId === null) {
+        timeoutId = setTimeout(flush, debounceMs);
+      }
+    },
+    
+    /**
+     * Immediately flush all pending updates without waiting for debounce.
+     * Use for updates that need immediate feedback (iteration start/complete).
+     */
+    flushNow() {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      flush();
+    }
+  };
+}
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))
@@ -144,6 +197,9 @@ async function main() {
       },
     });
     log("main", "TUI app started, state setters available");
+
+    // Create batched updater for coalescing rapid state changes
+    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 50);
 
     // Fetch initial diff stats and commits on resume
     const initialDiff = await getDiffStats(stateToUse.initialCommitHash);
