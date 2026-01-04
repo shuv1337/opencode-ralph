@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { colors, TOOL_ICONS } from "./colors";
 import { formatDuration } from "../util/time";
 import type { ToolEvent } from "../state";
@@ -59,41 +59,39 @@ export type LogProps = {
  * Animated spinner component using braille characters.
  * Only animates when isIdle is false (tool events are arriving).
  * Shows static spinner when idle to reduce unnecessary re-renders.
+ * 
+ * PERF: Uses a single createEffect for start/stop logic. The effect runs
+ * once on mount and whenever isIdle changes. The intervalRef guard ensures
+ * only one interval is ever active.
  */
 function Spinner(props: { isIdle: boolean }) {
   const [frame, setFrame] = createSignal(0);
   let intervalRef: ReturnType<typeof setInterval> | null = null;
 
-  // Start/stop animation based on isIdle state
-  const startAnimation = () => {
-    if (intervalRef) return;
-    intervalRef = setInterval(() => {
-      setFrame((f) => (f + 1) % SPINNER_FRAMES.length);
-    }, 120);
-  };
+  // Single effect handles both initial state and reactive updates.
+  // Guards ensure interval is created only once.
+  createEffect(() => {
+    if (props.isIdle) {
+      // Stop animation when idle
+      if (intervalRef) {
+        clearInterval(intervalRef);
+        intervalRef = null;
+      }
+    } else {
+      // Start animation when not idle (guard prevents multiple intervals)
+      if (!intervalRef) {
+        intervalRef = setInterval(() => {
+          setFrame((f) => (f + 1) % SPINNER_FRAMES.length);
+        }, 120);
+      }
+    }
+  });
 
-  const stopAnimation = () => {
+  // Cleanup on unmount
+  onCleanup(() => {
     if (intervalRef) {
       clearInterval(intervalRef);
       intervalRef = null;
-    }
-  };
-
-  onMount(() => {
-    // Only start animation if not idle
-    if (!props.isIdle) {
-      startAnimation();
-    }
-
-    onCleanup(() => stopAnimation());
-  });
-
-  // React to isIdle changes
-  createEffect(() => {
-    if (props.isIdle) {
-      stopAnimation();
-    } else {
-      startAnimation();
     }
   });
 
