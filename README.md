@@ -212,3 +212,69 @@ bun test --watch
 bun test --coverage
 ```
 
+### Test Structure
+
+The test suite is organized into three main directories:
+
+```
+tests/
+├── unit/           # Isolated tests for individual modules
+├── integration/    # End-to-end tests for complete workflows
+├── fixtures/       # Static test data files
+│   └── plans/      # Sample plan.md files for parser tests
+└── helpers/        # Shared test utilities and factories
+```
+
+#### Unit Tests (`tests/unit/`)
+
+Unit tests verify individual modules in isolation. Each source file has a corresponding test file:
+
+| Test File | Source File | What It Tests |
+|-----------|-------------|---------------|
+| `plan.test.ts` | `src/plan.ts` | Plan parsing, checkbox counting |
+| `time.test.ts` | `src/util/time.ts` | Duration formatting, ETA calculations |
+| `state.test.ts` | `src/state.ts` | State persistence (load/save) |
+| `lock.test.ts` | `src/lock.ts` | Lock file acquisition and release |
+| `git.test.ts` | `src/git.ts` | Git hash retrieval, commit counting |
+| `loop.test.ts` | `src/loop.ts` | Prompt building, model parsing |
+
+#### Integration Tests (`tests/integration/`)
+
+Integration tests verify complete workflows with mocked external dependencies:
+
+- **`ralph-flow.test.ts`** - Tests the full Ralph iteration cycle including:
+  - Callback invocation order during iterations
+  - Pause/resume flow via `.ralph-pause` file
+  - Completion detection via `.ralph-done` file
+  - Abort signal handling
+  - State persistence across iterations
+
+#### Test Fixtures (`tests/fixtures/`)
+
+Static test data files used by unit tests, particularly for plan parsing:
+
+| Fixture | Purpose |
+|---------|---------|
+| `plans/empty.md` | Empty file for edge case testing |
+| `plans/all-complete.md` | All tasks marked `[x]` |
+| `plans/all-incomplete.md` | All tasks marked `[ ]` |
+| `plans/partial-complete.md` | Mix of completed and incomplete tasks |
+| `plans/complex-nested.md` | Nested lists, edge cases |
+| `plans/code-blocks.md` | Checkboxes inside fenced code blocks |
+| `plans/uppercase-complete.md` | Tests `[X]` case insensitivity |
+
+#### Test Helpers (`tests/helpers/`)
+
+Shared utilities for writing tests:
+
+- **`mock-factories.ts`** - Factory functions for creating test data:
+  - `createMockPersistedState()` - Creates mock state objects
+  - `createMockLoopOptions()` - Creates mock loop configuration
+  - `createMockToolEvent()` - Creates mock tool events
+  - `createMockSeparatorEvent()` - Creates mock separator events
+
+- **`temp-files.ts`** - Temporary file management:
+  - `TempDir` class - Manages temp directories with automatic cleanup
+  - `FileTracker` class - Tracks files for cleanup after tests
+  - `cleanupRalphFiles()` - Removes all `.ralph-*` files
+

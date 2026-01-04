@@ -274,7 +274,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - How to run with coverage: `bun test --coverage`
   - How to run in watch mode: `bun test --watch`
 
-- [ ] **10.2** Document test structure in README:
+- [x] **10.2** Document test structure in README:
   - Explain `tests/unit/` vs `tests/integration/`
   - Explain fixture usage
 
