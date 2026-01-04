@@ -138,25 +138,25 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
 
 ## Phase 5: Unit Tests - Lock File (`src/lock.ts`)
 
-- [ ] **5.1** Test `acquireLock()` when no lock exists:
+- [x] **5.1** Test `acquireLock()` when no lock exists:
   - Should return `true`
   - Should create `.ralph-lock` file with current PID
 
-- [ ] **5.2** Test `acquireLock()` when lock held by current process:
+- [x] **5.2** Test `acquireLock()` when lock held by current process:
   - Acquire lock
   - Try to acquire again
   - Should return `false` (same PID, process exists)
 
-- [ ] **5.3** Test `acquireLock()` with stale lock (dead PID):
+- [x] **5.3** Test `acquireLock()` with stale lock (dead PID):
   - Write lock file with non-existent PID
   - Should return `true` (stale lock overwritten)
 
-- [ ] **5.4** Test `releaseLock()` removes lock file:
+- [x] **5.4** Test `releaseLock()` removes lock file:
   - Acquire lock
   - Release lock
   - Verify `.ralph-lock` file deleted
 
-- [ ] **5.5** Test `releaseLock()` when no lock exists:
+- [x] **5.5** Test `releaseLock()` when no lock exists:
   - Should not throw
   - Should complete successfully
 
