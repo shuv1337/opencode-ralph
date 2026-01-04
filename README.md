@@ -1,280 +1,158 @@
-# opencode-ralph
+# ralph
 
-A fullscreen TUI harness for Ralph-driven development using `@opentui/solid` and `@opencode-ai/sdk`. Stateless design with file-based persistence for resume capability.
+AI agent loop for autonomous task execution. Reads a plan, picks one task, completes it, commits, repeats.
 
-## What is Ralph-driven development?
-
-Ralph-driven development is a methodology pioneered by [Geoffrey Huntley](https://ghuntley.com/ralph/) where an AI agent operates in a stateless execution loop:
-
-1. **Read** the plan file
-2. **Pick ONE task** from the backlog
-3. **Complete the task** with verification
-4. **Commit** the change (updating the plan in the same commit)
-5. **Repeat** until all tasks are done
-
-The key insight is that by forcing the agent to re-read the full context every iteration, you eliminate context drift. Each loop starts fresh, with the agent maintaining a vague understanding of the past AND the end state.
-
-This technique works because:
-- **Deterministic failures are debuggable**: When Ralph fails, you don't just fix the code - you fix the prompt. Add a "sign" (instruction) to prevent the same mistake.
-- **AGENTS.md accumulates wisdom**: Critical operational details (e.g., how to build, common pitfalls) are captured so future iterations don't have to rediscover them.
-- **Human review remains in control**: The agent never pushes - only commits - so you maintain a review checkpoint before changes go live.
-
-For more on the methodology, see:
-- [Geoffrey Huntley's original Ralph post](https://ghuntley.com/ralph/)
-- [Luke Parker's "Stop Chatting with AI. Start Loops"](https://lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development)
-
-## Features
-
-- Fullscreen TUI with alt screen and Tokyo Night color scheme
-- Parse `plan.md` checkboxes for real-time progress tracking
-- ETA calculation based on rolling average of iteration times
-- Scrollable event log grouped by iteration
-- File-based state persistence (resume after Ctrl+C)
-- Lock file to prevent multiple instances
-- Pause/resume support via keyboard
-
-## Installation
-
-### Prerequisites
-
-- [Bun](https://bun.sh) runtime (v1.0+)
-- [OpenCode](https://opencode.ai) CLI (for the agent backend)
-
-### Setup
+## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/opencode-ralph.git
+git clone https://github.com/ghuntley/opencode-ralph.git
 cd opencode-ralph
-
-# Install dependencies
 bun install
+bun link  # makes 'ralph' available globally
+
+# Run in any project directory
+ralph
 ```
 
-### Global Installation (Optional)
+## What is Ralph?
 
-To make the `ralph` command available globally:
+Ralph-driven development forces an AI agent to re-read full context every iteration, eliminating context drift. Each loop:
 
-```bash
-bun link
-```
+1. Read `plan.md`
+2. Pick ONE task
+3. Complete it
+4. Commit (updating the plan in the same commit)
+5. Repeat until done
 
-After linking, you can run `ralph` from any directory.
+The agent never pushes—only commits—so you maintain review control.
+
+**Why it works:**
+- Deterministic failures are debuggable. When Ralph fails, fix the prompt.
+- `AGENTS.md` accumulates wisdom so future iterations don't rediscover fire.
+- Human review checkpoint before anything goes live.
+
+See: [ghuntley.com/ralph](https://ghuntley.com/ralph/) · [lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development](https://lukeparker.dev/stop-chatting-with-ai-start-loops-ralph-driven-development)
 
 ## Usage
 
-### Basic Usage
-
 ```bash
-# Run with defaults (uses plan.md in current directory)
-ralph
-
-# Or with bun directly
-bun run src/index.ts
+ralph                              # uses plan.md in current directory
+ralph --plan BACKLOG.md            # different plan file
+ralph --model anthropic/claude-opus-4  # different model
+ralph --reset                      # start fresh, ignore previous state
 ```
 
-### With Options
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--plan, -p` | `plan.md` | Plan file path |
+| `--model, -m` | `opencode/claude-opus-4-5` | Model (provider/model format) |
+| `--prompt` | see below | Custom prompt (`{plan}` placeholder) |
+| `--reset, -r` | `false` | Reset state |
 
-```bash
-# Use a different plan file
-ralph --plan BACKLOG.md
-
-# Use a specific model
-ralph --model anthropic/claude-opus-4
-
-# Use a custom prompt template
-ralph --prompt "Read {plan} and complete one task..."
-
-# Reset state and start fresh
-ralph --reset
-
-# Combine multiple options
-ralph --plan tasks.md --model opencode/gpt-4o --reset
+**Default prompt:**
 ```
-
-### CLI Options
-
-| Option | Alias | Type | Default | Description |
-|--------|-------|------|---------|-------------|
-| `--plan` | `-p` | string | `plan.md` | Path to the plan file |
-| `--model` | `-m` | string | `opencode/claude-opus-4-5` | Model to use (provider/model format) |
-| `--prompt` | | string | (see below) | Custom prompt template (use `{plan}` as placeholder) |
-| `--reset` | `-r` | boolean | `false` | Reset state and start fresh |
-| `--help` | `-h` | | | Show help |
-
-### Default Prompt
-
-The default prompt template used when `--prompt` is not specified:
-
-```
-READ all of {plan}. Pick ONE task. If needed, verify via web/code search. Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.
-```
-
-## Files
-
-Ralph uses several hidden files in your project directory:
-
-| File | Purpose |
-|------|---------|
-| `.ralph-state.json` | Persisted state for resume. Contains start time, initial commit hash, iteration durations, and plan file path. Allows resuming after Ctrl+C. |
-| `.ralph-lock` | Lock file to prevent multiple instances. Contains the PID of the running process. Automatically cleaned up on exit. |
-| `.ralph-done` | Created by the agent when all tasks in the plan are complete. Ralph detects this file and exits cleanly. |
-| `.ralph-pause` | Created by pressing `p` to pause the loop. Ralph checks for this file between iterations and waits until it's removed. |
-
-All files are gitignored by default. Add them to your `.gitignore` if not already present:
-
-```
-.ralph-state.json
-.ralph-lock
-.ralph-done
-.ralph-pause
+READ all of {plan}. Pick ONE task. If needed, verify via web/code search (this applies to packages, knowledge, deterministic data - NEVER VERIFY EDIT TOOLS WORKED OR THAT YOU COMMITED SOMETHING. BE PRAGMATIC ABOUT EVERYTHING). Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.
 ```
 
 ## Keybindings
 
 | Key | Action |
 |-----|--------|
-| `p` | Toggle pause - creates/deletes `.ralph-pause` file |
-| `q` | Quit the application |
-| `Ctrl+C` | Quit the application |
-| `↑` / `k` | Scroll up |
-| `↓` / `j` | Scroll down |
-| `Page Up` | Scroll up half viewport |
-| `Page Down` | Scroll down half viewport |
-| `Home` | Scroll to top |
-| `End` | Scroll to bottom |
+| `p` | Pause/resume |
+| `q` / `Ctrl+C` | Quit |
 
-## Tips
+## Files
 
-### Spend Time on the Plan
+| File | Purpose |
+|------|---------|
+| `.ralph-state.json` | Persisted state for resume after Ctrl+C |
+| `.ralph-lock` | Prevents multiple instances |
+| `.ralph-done` | Agent creates this when all tasks complete |
+| `.ralph-pause` | Created by `p` key to pause loop |
 
-The plan is everything. Before starting Ralph, invest significant time crafting a detailed, well-structured plan file:
-
-- **Be specific**: Each task should be small and isolated enough that a new engineer could implement it immediately
-- **Chronological order**: Tasks should be ordered so dependencies come first
-- **Use checkboxes**: Ralph parses `- [x]` and `- [ ]` to track progress
-- **1000+ lines is normal**: Don't be afraid of long plans - more detail means fewer hallucinations
-- **Read every line**: If you're not happy with the plan, keep refining before running
-
-> "I spend an hour purely on the plan. I do not touch code." — Luke Parker
-
-### Use AGENTS.md for Accumulated Wisdom
-
-The `AGENTS.md` file is where Ralph's learnings persist across iterations:
-
-- **Build steps**: If Ralph discovers a tricky build command, it writes it to AGENTS.md so future iterations don't rediscover fire
-- **Common pitfalls**: When Ralph makes a mistake, add a "sign" to prevent the same error
-- **Configuration quirks**: Library-specific settings, environment requirements, etc.
-
-Example AGENTS.md content:
-```markdown
-## Build Commands
-- Run `bun install` before `bun run dev`
-- Tests require `DATABASE_URL` to be set
-
-## Pitfalls
-- Never import from `solid-js` directly, use `@opentui/solid`
-- The API requires `Content-Type: application/json` header
+Add to `.gitignore`:
+```
+.ralph-*
 ```
 
-Think of it as putting up warning signs at the playground - when Ralph falls off the slide, you don't just put him back; you put up a sign that says "DON'T JUMP."
+## Architecture
 
-### Monitor with GitHub Desktop
+```
+src/
+├── index.ts      # CLI entry, wires TUI to loop
+├── loop.ts       # Main agent loop (prompt → events → commit)
+├── app.tsx       # Solid.js TUI root component
+├── state.ts      # State types and persistence
+├── plan.ts       # Plan file parser (checkbox counting)
+├── git.ts        # Git operations (hash, diff, commits)
+├── lock.ts       # Lock file management
+├── prompt.ts     # User confirmation prompts
+├── components/   # TUI components (header, log, footer)
+└── util/         # Helpers (time formatting, logging)
+```
 
-While Ralph runs, use GitHub Desktop (or `git log --oneline -n 20`) to monitor progress:
+**Data flow:** `index.ts` starts the TUI (`app.tsx`) and the loop (`loop.ts`) in parallel. The loop sends callbacks to update TUI state. State persists to `.ralph-state.json` for resume capability.
 
-- **Watch commits roll in**: Each completed task should produce a commit
-- **Review before pushing**: Ralph only commits, never pushes - you maintain the final review checkpoint
-- **Catch issues early**: If commits stop appearing, check the TUI for errors or paused state
-- **Squash if needed**: Since you control the push, you can squash messy commits before they reach the remote
+## Writing Plans
 
-### General Tips
+The plan is everything. Invest time here.
 
-- **Never let Ralph push**: The `--only-commit` design ensures you always review before code reaches the remote
-- **Pause to intervene**: Press `p` if you see Ralph heading in the wrong direction - fix the issue manually, then resume
-- **Trust eventual consistency**: Ralph will test your patience, but deterministic failures are debuggable failures
-- **Tune, don't blame**: When Ralph does something bad, Ralph gets tuned - like a guitar. Fix the prompt, not just the code.
+```markdown
+# Project Plan
+
+## Phase 1: Setup
+- [ ] Initialize project with bun init
+- [ ] Add TypeScript configuration
+- [ ] Create src/index.ts entry point
+
+## Phase 2: Core Features
+- [ ] Implement user authentication
+- [ ] Add database connection
+```
+
+**Guidelines:**
+- Small, isolated tasks—one commit each
+- Chronological order (dependencies first)
+- Use `- [ ]` checkboxes (Ralph parses these)
+- 1000+ lines is normal; more detail = fewer hallucinations
+
+## AGENTS.md
+
+Ralph writes operational learnings here. Future iterations read it.
+
+```markdown
+# AGENTS.md
+
+## Build
+- Run `bun install` before `bun run dev`
+
+## Pitfalls
+- Never import from `solid-js`, use `@opentui/solid`
+```
+
+When Ralph makes a mistake, add a sign to prevent it recurring.
 
 ## Testing
 
-Ralph includes a comprehensive test suite using Bun's built-in test runner.
-
-### Running Tests
-
 ```bash
-# Run all tests
-bun test
-
-# Run tests in watch mode (re-runs on file changes)
-bun test --watch
-
-# Run tests with coverage report
-bun test --coverage
+bun test              # run all tests
+bun test --watch      # watch mode
+bun test --coverage   # with coverage
 ```
-
-### Test Structure
-
-The test suite is organized into three main directories:
 
 ```
 tests/
-├── unit/           # Isolated tests for individual modules
-├── integration/    # End-to-end tests for complete workflows
-├── fixtures/       # Static test data files
-│   └── plans/      # Sample plan.md files for parser tests
-└── helpers/        # Shared test utilities and factories
+├── unit/         # Module isolation tests
+├── integration/  # Full workflow tests
+├── fixtures/     # Test plan files
+└── helpers/      # Mock factories, temp file utils
 ```
 
-#### Unit Tests (`tests/unit/`)
+## Requirements
 
-Unit tests verify individual modules in isolation. Each source file has a corresponding test file:
+- [Bun](https://bun.sh) v1.0+
+- [OpenCode](https://opencode.ai) CLI running
 
-| Test File | Source File | What It Tests |
-|-----------|-------------|---------------|
-| `plan.test.ts` | `src/plan.ts` | Plan parsing, checkbox counting |
-| `time.test.ts` | `src/util/time.ts` | Duration formatting, ETA calculations |
-| `state.test.ts` | `src/state.ts` | State persistence (load/save) |
-| `lock.test.ts` | `src/lock.ts` | Lock file acquisition and release |
-| `git.test.ts` | `src/git.ts` | Git hash retrieval, commit counting |
-| `loop.test.ts` | `src/loop.ts` | Prompt building, model parsing |
+## License
 
-#### Integration Tests (`tests/integration/`)
-
-Integration tests verify complete workflows with mocked external dependencies:
-
-- **`ralph-flow.test.ts`** - Tests the full Ralph iteration cycle including:
-  - Callback invocation order during iterations
-  - Pause/resume flow via `.ralph-pause` file
-  - Completion detection via `.ralph-done` file
-  - Abort signal handling
-  - State persistence across iterations
-
-#### Test Fixtures (`tests/fixtures/`)
-
-Static test data files used by unit tests, particularly for plan parsing:
-
-| Fixture | Purpose |
-|---------|---------|
-| `plans/empty.md` | Empty file for edge case testing |
-| `plans/all-complete.md` | All tasks marked `[x]` |
-| `plans/all-incomplete.md` | All tasks marked `[ ]` |
-| `plans/partial-complete.md` | Mix of completed and incomplete tasks |
-| `plans/complex-nested.md` | Nested lists, edge cases |
-| `plans/code-blocks.md` | Checkboxes inside fenced code blocks |
-| `plans/uppercase-complete.md` | Tests `[X]` case insensitivity |
-
-#### Test Helpers (`tests/helpers/`)
-
-Shared utilities for writing tests:
-
-- **`mock-factories.ts`** - Factory functions for creating test data:
-  - `createMockPersistedState()` - Creates mock state objects
-  - `createMockLoopOptions()` - Creates mock loop configuration
-  - `createMockToolEvent()` - Creates mock tool events
-  - `createMockSeparatorEvent()` - Creates mock separator events
-
-- **`temp-files.ts`** - Temporary file management:
-  - `TempDir` class - Manages temp directories with automatic cleanup
-  - `FileTracker` class - Tracks files for cleanup after tests
-  - `cleanupRalphFiles()` - Removes all `.ralph-*` files
-
+MIT
