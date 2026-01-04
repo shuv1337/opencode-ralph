@@ -308,5 +308,60 @@ describe("state management", () => {
       expect(result[0].duration).toBe(events[expectedIndex].duration);
       expect(result[0].commitCount).toBe(events[expectedIndex].commitCount);
     });
+
+    it("should keep memory bounded after 20+ iterations worth of events", () => {
+      // Simulate 25 iterations with ~50 events per iteration
+      // Total: 1250 events, far exceeding MAX_EVENTS (200)
+      const NUM_ITERATIONS = 25;
+      const EVENTS_PER_ITERATION = 50;
+      
+      let events: ToolEvent[] = [];
+      
+      for (let iteration = 1; iteration <= NUM_ITERATIONS; iteration++) {
+        // Add separator at start of iteration
+        events.push({
+          iteration,
+          type: "separator",
+          text: `iteration ${iteration}`,
+          timestamp: iteration * 100000,
+          duration: 60000,
+          commitCount: 1,
+        });
+        
+        // Add tool events for this iteration
+        for (let e = 0; e < EVENTS_PER_ITERATION; e++) {
+          events.push({
+            iteration,
+            type: "tool",
+            icon: "🔧",
+            text: `Tool event ${e} for iteration ${iteration}`,
+            timestamp: iteration * 100000 + e + 1,
+          });
+          
+          // Trim after each event addition (simulating real behavior in onEvent)
+          events = trimEvents(events);
+        }
+      }
+      
+      // After 25 iterations * 51 events/iteration = 1275 events added
+      // Events array should be capped at MAX_EVENTS
+      expect(events.length).toBeLessThanOrEqual(MAX_EVENTS);
+      expect(events.length).toBe(MAX_EVENTS);
+      
+      // Verify the most recent events are kept (from later iterations)
+      const lastEvent = events[events.length - 1];
+      expect(lastEvent.iteration).toBe(NUM_ITERATIONS);
+      
+      // Verify old events from early iterations are dropped
+      const firstEvent = events[0];
+      // First event should NOT be from iteration 1 (those were trimmed)
+      expect(firstEvent.iteration).toBeGreaterThan(1);
+      
+      // The earliest iteration in the bounded array should be calculable:
+      // We have MAX_EVENTS=200 events, ~51 events per iteration
+      // So we'd expect events from roughly the last 4 iterations
+      const minIteration = Math.min(...events.map(e => e.iteration));
+      expect(minIteration).toBeGreaterThan(NUM_ITERATIONS - 5);
+    });
   });
 });
