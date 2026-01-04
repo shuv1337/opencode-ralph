@@ -191,7 +191,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
   - Given custom `options.prompt`
   - Should use custom prompt instead of default
 
-- [ ] **7.3** Test `buildPrompt()` with default prompt:
+- [x] **7.3** Test `buildPrompt()` with default prompt:
   - Given no `options.prompt`
   - Should use `DEFAULT_PROMPT`
 

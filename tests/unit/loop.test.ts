@@ -61,6 +61,36 @@ describe("buildPrompt", () => {
       expect(result).toBe("Do exactly this: tasks.md - no more, no less.");
     });
   });
+
+  describe("default prompt", () => {
+    it("should use DEFAULT_PROMPT when options.prompt is undefined", () => {
+      const options = createOptions({
+        planFile: "plan.md",
+        prompt: undefined,
+      });
+      const result = buildPrompt(options);
+      // Verify it uses the default prompt with {plan} substituted
+      expect(result).toContain("READ all of plan.md");
+      expect(result).toContain("Pick ONE task");
+      expect(result).toContain("update AGENTS.md");
+      expect(result).toContain(".ralph-done");
+      expect(result).toContain("NEVER GIT PUSH");
+      // Verify {plan} was replaced
+      expect(result).not.toContain("{plan}");
+    });
+
+    it("should substitute {plan} in default prompt with custom planFile", () => {
+      const options = createOptions({
+        planFile: "docs/custom-plan.md",
+        prompt: undefined,
+      });
+      const result = buildPrompt(options);
+      // The default prompt has two {plan} occurrences - both should be replaced
+      expect(result).toContain("READ all of docs/custom-plan.md");
+      expect(result).toContain("Update docs/custom-plan.md");
+      expect(result).not.toContain("{plan}");
+    });
+  });
 });
 
 describe("parseModel", () => {
