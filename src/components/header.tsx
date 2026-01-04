@@ -37,7 +37,7 @@ export function Header(props: HeaderProps) {
     <box
       flexDirection="row"
       width="100%"
-      height={1}
+      height={2}
       alignItems="center"
       paddingLeft={1}
       paddingRight={1}
@@ -51,24 +51,43 @@ export function Header(props: HeaderProps) {
       <text fg={colors.fg}> {props.status}</text>
 
       {/* Separator */}
-      <text fg={colors.fgMuted}> \u2502 </text>
+      <text fg={colors.fgMuted}>{"  \u2502  "}</text>
 
       {/* Iteration display */}
       <text fg={colors.fg}>iteration {props.iteration}</text>
 
       {/* Separator */}
-      <text fg={colors.fgMuted}> \u2502 </text>
+      <text fg={colors.fgMuted}>{"  \u2502  "}</text>
 
-      {/* Task progress */}
+      {/* Task progress with inline progress bar */}
       <text fg={colors.fg}>
-        {props.tasksComplete}/{props.totalTasks} tasks
+        {props.tasksComplete}/{props.totalTasks} tasks{" "}
+        <span style={{ fg: colors.fgMuted }}>[</span>
+        <span style={{ fg: colors.green }}>
+          {"\u25A0".repeat(
+            props.totalTasks > 0
+              ? Math.round((props.tasksComplete / props.totalTasks) * 10)
+              : 0
+          )}
+        </span>
+        <span style={{ fg: colors.fgMuted }}>
+          {"\u25A1".repeat(
+            10 -
+              (props.totalTasks > 0
+                ? Math.round((props.tasksComplete / props.totalTasks) * 10)
+                : 0)
+          )}
+        </span>
+        <span style={{ fg: colors.fgMuted }}>]</span>
       </text>
 
       {/* Separator */}
-      <text fg={colors.fgMuted}> \u2502 </text>
+      <text fg={colors.fgMuted}>{"  \u2502  "}</text>
 
       {/* ETA display */}
       <text fg={colors.fgMuted}>{formatEta(props.eta)}</text>
     </box>
   );
 }
+
+

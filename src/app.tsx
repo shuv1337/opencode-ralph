@@ -127,6 +127,7 @@ export function App(props: AppProps) {
     linesAdded: 0,
     linesRemoved: 0,
     events: [],
+    isIdle: true, // Starts idle, waiting for first LLM response
   });
 
   // Signal to track iteration times (for ETA calculation)

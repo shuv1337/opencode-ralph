@@ -15,6 +15,7 @@ export type LoopState = {
   linesRemoved: number;
   events: ToolEvent[];
   error?: string;
+  isIdle: boolean; // True when waiting for LLM response, false when tool events are arriving
 };
 
 export type ToolEvent = {

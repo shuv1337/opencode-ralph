@@ -3,3 +3,4 @@ node_modules/
 .ralph-state.json
 .ralph-pause
 .ralph-done
+.ralph.log

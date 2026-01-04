@@ -1,9 +1,10 @@
 import { createOpencodeServer, createOpencodeClient } from "@opencode-ai/sdk";
 import type { LoopOptions, PersistedState, ToolEvent } from "./state.js";
-import { getHeadHash, getCommitsSince } from "./git.js";
+import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan } from "./plan.js";
+import { log } from "./util/log.js";
 
-const DEFAULT_PROMPT = `READ all of {plan}. Pick ONE task. If needed, verify via web/code search. Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.`;
+const DEFAULT_PROMPT = `READ all of {plan}. Pick ONE task. If needed, verify via web/code search (this applies to packages, knowledge, deterministic data - NEVER VERIFY EDIT TOOLS WORKED OR THAT YOU COMMITED SOMETHING. BE PRAGMATIC ABOUT EVERYTHING). Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.`;
 
 export function buildPrompt(options: LoopOptions): string {
   const template = options.prompt || DEFAULT_PROMPT;
@@ -33,6 +34,7 @@ export type LoopCallbacks = {
   ) => void;
   onTasksUpdated: (done: number, total: number) => void;
   onCommitsUpdated: (commits: number) => void;
+  onDiffUpdated: (added: number, removed: number) => void;
   onPause: () => void;
   onResume: () => void;
   onComplete: () => void;
@@ -45,21 +47,31 @@ export async function runLoop(
   callbacks: LoopCallbacks,
   signal: AbortSignal,
 ): Promise<void> {
-  // Start opencode server
-  const server = await createOpencodeServer({ signal });
-  const client = createOpencodeClient({ baseUrl: server.url });
+  log("loop", "runLoop started", { planFile: options.planFile, model: options.model });
+  
+  let server: { url: string; close(): void } | null = null;
 
   try {
+    // Start opencode server
+    log("loop", "Creating opencode server...");
+    server = await createOpencodeServer({ signal, port: 4190 });
+    log("loop", "Server created", { url: server.url });
+    
+    const client = createOpencodeClient({ baseUrl: server.url });
+    log("loop", "Client created");
+
     // Initialize iteration counter from persisted state
     let iteration = persistedState.iterationTimes.length;
     let isPaused = false;
     let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
+    log("loop", "Initial state", { iteration, previousCommitCount });
 
     // Main loop
     while (!signal.aborted) {
       // Check for .ralph-done file at start of each iteration
       const doneFile = Bun.file(".ralph-done");
       if (await doneFile.exists()) {
+        log("loop", ".ralph-done found, completing");
         await doneFile.delete();
         callbacks.onComplete();
         break;
@@ -70,18 +82,21 @@ export async function runLoop(
       if (await pauseFile.exists()) {
         if (!isPaused) {
           isPaused = true;
+          log("loop", "Pausing");
           callbacks.onPause();
         }
         await Bun.sleep(1000);
         continue;
       } else if (isPaused) {
         isPaused = false;
+        log("loop", "Resuming");
         callbacks.onResume();
       }
 
       // Iteration start (10.11)
       iteration++;
       const iterationStartTime = Date.now();
+      log("loop", "Iteration starting", { iteration });
       callbacks.onIterationStart(iteration);
       
       // Add separator event for new iteration
@@ -93,22 +108,28 @@ export async function runLoop(
       });
 
       // Parse plan and update task counts (10.12)
+      log("loop", "Parsing plan file");
       const { done, total } = await parsePlan(options.planFile);
+      log("loop", "Plan parsed", { done, total });
       callbacks.onTasksUpdated(done, total);
 
       // Create session (10.13)
+      log("loop", "Creating session...");
       const sessionResult = await client.session.create();
       if (!sessionResult.data) {
+        log("loop", "ERROR: Failed to create session");
         callbacks.onError("Failed to create session");
         break;
       }
       const sessionId = sessionResult.data.id;
+      log("loop", "Session created", { sessionId });
 
       // Send prompt (10.14)
       const promptText = buildPrompt(options);
       const { providerID, modelID } = parseModel(options.model);
+      log("loop", "Sending prompt", { providerID, modelID });
       
-      await client.session.prompt({
+      await client.session.promptAsync({
         path: { id: sessionId },
         body: {
           parts: [
@@ -123,10 +144,19 @@ export async function runLoop(
           },
         },
       });
+      log("loop", "Prompt sent (async)");
 
       // Subscribe to events and iterate over the stream (10.15)
+      log("loop", "Subscribing to events...");
       const events = await client.event.subscribe();
+      log("loop", "Event subscription established, processing events...");
+      
       for await (const event of events.stream) {
+        if (signal.aborted) {
+          log("loop", "Signal aborted during event processing");
+          break;
+        }
+        
         // Filter events for current session ID
         if (event.type === "message.part.updated") {
           const part = event.properties.part;
@@ -141,6 +171,7 @@ export async function runLoop(
                 ? JSON.stringify(part.state.input)
                 : "Unknown");
 
+            log("loop", "Tool completed", { toolName, title });
             callbacks.onEvent({
               iteration,
               type: "tool",
@@ -153,6 +184,7 @@ export async function runLoop(
 
         // Session completion detection (10.17)
         if (event.type === "session.idle" && event.properties.sessionID === sessionId) {
+          log("loop", "Session idle, breaking event loop");
           break;
         }
 
@@ -167,6 +199,7 @@ export async function runLoop(
             errorMessage = String(props.error.data.message);
           }
           
+          log("loop", "Session error", { errorMessage });
           callbacks.onError(errorMessage);
           throw new Error(errorMessage);
         }
@@ -178,11 +211,27 @@ export async function runLoop(
       const commitsThisIteration = totalCommits - previousCommitCount;
       previousCommitCount = totalCommits;
       
+      // Get diff stats
+      const diffStats = await getDiffStats(persistedState.initialCommitHash);
+      
+      log("loop", "Iteration completed", { iteration, duration: iterationDuration, commits: commitsThisIteration, diff: diffStats });
       callbacks.onIterationComplete(iteration, iterationDuration, commitsThisIteration);
       callbacks.onCommitsUpdated(totalCommits);
+      callbacks.onDiffUpdated(diffStats.added, diffStats.removed);
     }
+    
+    log("loop", "Main loop exited", { aborted: signal.aborted });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log("loop", "ERROR in runLoop", { error: errorMessage });
+    callbacks.onError(errorMessage);
+    throw error;
   } finally {
-    // Cleanup: close server on completion, error, or abort
-    server.close();
+    log("loop", "Cleaning up...");
+    if (server) {
+      log("loop", "Closing server");
+      server.close();
+    }
+    log("loop", "Cleanup complete");
   }
 }

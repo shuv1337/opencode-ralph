@@ -46,4 +46,17 @@ describe("parsePlan", () => {
     const result = await parsePlan(path.join(fixturesDir, "code-blocks.md"));
     expect(result).toEqual({ done: 2, total: 5 });
   });
+
+  it("should count all checkboxes at any nesting level", async () => {
+    // complex-nested.md has checkboxes at various nesting levels:
+    // - Root level tasks
+    // - Single-nested tasks (indented once)
+    // - Deeply nested tasks (indented twice)
+    // Plus a checkbox-like pattern in text (line 38) which the regex matches
+    // Completed (x/X): 6 total
+    // Incomplete [ ]: 7 total
+    // (Excludes checkboxes inside code blocks which are correctly ignored)
+    const result = await parsePlan(path.join(fixturesDir, "complex-nested.md"));
+    expect(result).toEqual({ done: 6, total: 13 });
+  });
 });

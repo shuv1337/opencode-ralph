@@ -41,7 +41,7 @@ Fix TUI freezing caused by memory leak and excessive CPU usage.
 
 ## Phase 5: Idle Mode Optimization
 
-- [ ] Add `isIdle` state flag to `LoopState` in `src/state.ts`
+- [x] Add `isIdle` state flag to `LoopState` in `src/state.ts`
 - [ ] Set `isIdle: true` when waiting for LLM response (after prompt sent, before events arrive)
 - [ ] Set `isIdle: false` when tool events start arriving
 - [ ] Skip elapsed timer updates when `isIdle: true` (reduce unnecessary re-renders)
