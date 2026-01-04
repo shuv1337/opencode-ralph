@@ -195,3 +195,20 @@ While Ralph runs, use GitHub Desktop (or `git log --oneline -n 20`) to monitor p
 - **Trust eventual consistency**: Ralph will test your patience, but deterministic failures are debuggable failures
 - **Tune, don't blame**: When Ralph does something bad, Ralph gets tuned - like a guitar. Fix the prompt, not just the code.
 
+## Testing
+
+Ralph includes a comprehensive test suite using Bun's built-in test runner.
+
+### Running Tests
+
+```bash
+# Run all tests
+bun test
+
+# Run tests in watch mode (re-runs on file changes)
+bun test --watch
+
+# Run tests with coverage report
+bun test --coverage
+```
+

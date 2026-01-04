@@ -269,7 +269,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
 
 ## Phase 10: Documentation and CI
 
-- [ ] **10.1** Update README.md with testing instructions:
+- [x] **10.1** Update README.md with testing instructions:
   - How to run tests: `bun test`
   - How to run with coverage: `bun test --coverage`
   - How to run in watch mode: `bun test --watch`
