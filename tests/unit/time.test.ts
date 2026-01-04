@@ -80,5 +80,11 @@ describe("time utilities", () => {
         expect(formatEta(null)).toBe("--:--");
       });
     });
+
+    describe("valid duration", () => {
+      it("should format 300000ms as '~5m 0s remaining'", () => {
+        expect(formatEta(300000)).toBe("~5m 0s remaining");
+      });
+    });
   });
 });

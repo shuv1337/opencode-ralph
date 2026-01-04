@@ -107,7 +107,7 @@ Comprehensive test suite for the Ralph TUI harness using Bun's built-in test run
 - [x] **3.9** Test `formatEta()` with null:
   - `formatEta(null)` should return `"--:--"`
 
-- [ ] **3.10** Test `formatEta()` with valid duration:
+- [x] **3.10** Test `formatEta()` with valid duration:
   - `formatEta(300000)` should return `"~5m 0s remaining"`
 
 ---
