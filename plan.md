@@ -44,10 +44,20 @@ The `bin/ralph.ts` file spawns a child process which creates stdin/stdout inheri
 
 The `onMount` hook in Solid components isn't firing reliably, which breaks keyboard event registration.
 
-- [ ] **2.1** Research how opencode handles component initialization:
+- [x] **2.1** Research how opencode handles component initialization:
   - Look at `.reference/opencode/packages/opencode/src/cli/cmd/tui/app.tsx`
   - Note they don't await render() and don't use mount promises
   - Document the pattern they use
+  
+  **Findings (2025-01-05):**
+  1. **No await on render()** - OpenCode calls `render()` without awaiting (line 108-162)
+  2. **No mount promises** - No `mountPromise`/`mountResolve` pattern exists
+  3. **Promise wraps entire `tui()` function** - Returns `new Promise<void>()` that resolves only via `onExit` callback, not mount completion
+  4. **State via contexts not signals** - Uses nested Providers (RouteProvider, SDKProvider, LocalProvider, etc.)
+  5. **`onMount` for init logic only** - Used at line 225 for arg processing, NOT for signaling external code
+  6. **`renderer.disableStdoutInterception()` called at line 170** - Immediately after `useRenderer()`
+  7. **`useKittyKeyboard: {}` in render options** - At line 152, enables keyboard protocol
+  8. **Trusts Solid reactivity** - No manual `renderer.requestRender()` calls for state updates
 
 - [ ] **2.2** Remove the `mountPromise` pattern in `src/app.tsx`:
   - The current code resolves `mountPromise` synchronously during component body
