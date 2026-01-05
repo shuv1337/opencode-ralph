@@ -1,11 +1,11 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
-import { createSignal, createEffect, onCleanup, onMount, Setter } from "solid-js";
+import { createSignal, onCleanup, Setter } from "solid-js";
 import { Header } from "./components/header";
 import { Log } from "./components/log";
 import { Footer } from "./components/footer";
 import { PausedOverlay } from "./components/paused";
-import type { LoopState, LoopOptions, PersistedState, ToolEvent } from "./state";
+import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { colors } from "./components/colors";
 import { calculateEta } from "./util/time";
 import { log } from "./util/log";
@@ -127,52 +127,13 @@ log("app", "Calling render()");
   return { exitPromise, stateSetters };
 }
 
-let rendererInfoLogged = false;
-
 export function App(props: AppProps) {
   // Get renderer for cleanup on quit
   const renderer = useRenderer();
   
-  // Task 3.4: Disable stdout interception to prevent OpenTUI from capturing stdout
-  // which may interfere with logging and other output. OpenCode does this at line 170.
+  // Disable stdout interception to prevent OpenTUI from capturing stdout
+  // which may interfere with logging and other output (matches OpenCode pattern).
   renderer.disableStdoutInterception();
-
-  if (!rendererInfoLogged) {
-    rendererInfoLogged = true;
-    try {
-      const proto = Object.getPrototypeOf(renderer as any);
-      log("app", "renderer", {
-        keys: Object.keys(renderer as any),
-        protoKeys: proto ? Object.getOwnPropertyNames(proto) : [],
-      });
-    } catch (e) {
-      log("app", "renderer", { error: String(e) });
-    }
-    
-    // Task 3.2: Verify renderer.keyInput exists and add direct listener for debugging
-    const keyInput = (renderer as any).keyInput;
-    log("app", "keyInput check", {
-      exists: !!keyInput,
-      type: typeof keyInput,
-      hasOnMethod: typeof keyInput?.on === "function",
-    });
-    
-    if (keyInput && typeof keyInput.on === "function") {
-      // Add a direct debug listener to renderer.keyInput to verify events are reaching it
-      const debugKeyListener = (e: any) => {
-        log("app", "DIRECT keyInput listener fired", {
-          name: e.name,
-          sequence: e.sequence,
-          eventType: e.eventType,
-        });
-      };
-      keyInput.on("keypress", debugKeyListener);
-      log("app", "Direct debug keypress listener added to renderer.keyInput");
-      
-      // Note: We don't clean this up since it's for debugging and the app lifecycle
-      // handles cleanup on exit. In production, use onCleanup() to remove this.
-    }
-  }
   
   // State signal for loop state
   // Initialize iteration to length + 1 since we're about to start the next iteration
@@ -192,26 +153,6 @@ export function App(props: AppProps) {
   const [iterationTimes, setIterationTimes] = createSignal<number[]>(
     props.iterationTimesRef || [...props.persistedState.iterationTimes]
   );
-
-  // Verification effect: logs whenever state changes to confirm reactivity is working.
-  // This proves that setState triggers re-renders (task 2.5 verification).
-  createEffect(() => {
-    const s = state();
-    log("app", "State changed (reactive effect)", {
-      status: s.status,
-      iteration: s.iteration,
-      tasksComplete: s.tasksComplete,
-      totalTasks: s.totalTasks,
-      eventsCount: s.events.length,
-      isIdle: s.isIdle,
-    });
-  });
-
-  // Task 3.1: Verify that onMount fires - this is critical because useKeyboard 
-  // registers its callback inside onMount, not during component body execution.
-  onMount(() => {
-    log("app", "onMount fired - keyboard handlers should now be registered");
-  });
 
   // Export the state setter to module scope for external access.
   // We wrap setState to call requestRender() after updates - this helps ensure
@@ -277,40 +218,25 @@ export function App(props: AppProps) {
   let keyboardEventNotified = false;
 
   // Keyboard handling
-  // Task 3.1: Log to verify useKeyboard hook is being called
-  log("app", "useKeyboard hook being registered (component body)");
   useKeyboard((e: KeyEvent) => {
-    // Task 4.3: Notify caller that OpenTUI keyboard handling is working
+    // Notify caller that OpenTUI keyboard handling is working
     // This allows the caller to skip setting up a fallback stdin handler
     if (!keyboardEventNotified && props.onKeyboardEvent) {
       keyboardEventNotified = true;
       props.onKeyboardEvent();
     }
     
-    // Task 3.1: This log verifies the callback is being invoked when keys are pressed
-    log("app", "useKeyboard callback invoked", { 
-      name: e.name, 
-      ctrl: e.ctrl, 
-      meta: e.meta, 
-      shift: e.shift,
-      sequence: e.sequence,
-      eventType: e.eventType,
-    });
-    // Task 3.5: Use e.name directly - KeyEvent type has .name as string property
     const key = e.name.toLowerCase();
-    log("app", "Keyboard event processed", { key });
 
     // p key: toggle pause
     if (key === "p" && !e.ctrl && !e.meta) {
-      log("app", "Toggle pause");
       togglePause();
       return;
     }
 
     // q key: quit
     if (key === "q" && !e.ctrl && !e.meta) {
-      log("app", "Quit via 'q' key");
-      // Reset terminal title before destroying renderer (matches OpenCode pattern)
+      log("app", "Quit requested via 'q' key");
       renderer.setTerminalTitle("");
       renderer.destroy();
       props.onQuit();
@@ -319,8 +245,7 @@ export function App(props: AppProps) {
 
     // Ctrl+C: quit
     if (key === "c" && e.ctrl) {
-      log("app", "Quit via Ctrl+C");
-      // Reset terminal title before destroying renderer (matches OpenCode pattern)
+      log("app", "Quit requested via Ctrl+C");
       renderer.setTerminalTitle("");
       renderer.destroy();
       props.onQuit();
