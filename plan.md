@@ -136,7 +136,7 @@ The `useKeyboard` hook relies on `onMount` which may not be firing.
   - The debug listener is added during component body execution (not onMount), so it works regardless of lifecycle timing
   - If this listener fires but `useKeyboard` doesn't, it proves `onMount` is the issue
 
-- [ ] **3.3** Add `useKittyKeyboard` option to render config:
+- [x] **3.3** Add `useKittyKeyboard` option to render config:
   - OpenCode uses `useKittyKeyboard: {}` in their render options
   - Add this to ralph's render call in `src/app.tsx`:
     ```typescript
@@ -149,6 +149,11 @@ The `useKeyboard` hook relies on `onMount` which may not be firing.
       }
     );
     ```
+  
+  **Completed (2025-01-05):**
+  - Added `useKittyKeyboard: {}` to render options in `src/app.tsx` at line 78
+  - This enables the Kitty keyboard protocol for improved key event handling
+  - TypeScript compiles successfully
 
 - [ ] **3.4** Add `renderer.disableStdoutInterception()` call:
   - OpenCode calls this right after getting the renderer

@@ -75,6 +75,7 @@ export async function startApp(props: AppProps): Promise<StartAppResult> {
     {
       targetFps: 15, // Reduced from 30 to lower CPU usage
       exitOnCtrlC: false,
+      useKittyKeyboard: {}, // Enable Kitty keyboard protocol for improved key event handling
     }
   );
   
