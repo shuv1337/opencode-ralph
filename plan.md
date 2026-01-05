@@ -71,10 +71,16 @@ The `onMount` hook in Solid components isn't firing reliably, which breaks keybo
   - Removed mount resolution logic in `App` component body
   - Now follows OpenCode pattern: state setters available immediately after `render()` completes
 
-- [ ] **2.3** Refactor `startApp()` to not depend on mount timing:
+- [x] **2.3** Refactor `startApp()` to not depend on mount timing:
   - Return `stateSetters` immediately after render() completes
   - Trust that Solid's reactive system will handle updates
   - The state setters should work even before `onMount` fires
+  
+  **Completed (2025-01-05):**
+  - Added validation that globalSetState/globalUpdateIterationTimes are set after render()
+  - Simplified stateSetters to directly use the global setters (no wrapper indirection)
+  - Added clear documentation explaining that state setters are set in component body (not onMount)
+  - Follows OpenCode pattern: trust Solid's reactive system, no mount timing dependencies
 
 - [ ] **2.4** Simplify the `globalSetState` pattern:
   - Currently wraps setState with logging and requestRender

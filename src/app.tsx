@@ -80,21 +80,25 @@ export async function startApp(props: AppProps): Promise<StartAppResult> {
   
   log("app", "render() completed, state setters ready");
 
-  // Return state setters that will be available after render
+  // State setters are available immediately after render() completes.
+  // The App component's function body runs during render, which sets up
+  // globalSetState and globalUpdateIterationTimes. This follows the OpenCode
+  // pattern: trust Solid's reactive system - no mount timing dependencies.
+  //
+  // Note: globalSetState is set in the App component body (not onMount),
+  // so it's guaranteed to be available once render() resolves.
+  if (!globalSetState || !globalUpdateIterationTimes) {
+    throw new Error(
+      "State setters not initialized after render. This indicates the App component did not execute."
+    );
+  }
+
   const stateSetters: AppStateSetters = {
-    setState: (update) => {
-      if (globalSetState) {
-        return globalSetState(update);
-      }
-      log("app", "WARNING: setState called but globalSetState is null");
-      return {} as LoopState;
-    },
+    setState: globalSetState,
     updateIterationTimes: (times) => {
       iterationTimesRef.length = 0;
       iterationTimesRef.push(...times);
-      if (globalUpdateIterationTimes) {
-        globalUpdateIterationTimes(times);
-      }
+      globalUpdateIterationTimes!(times);
     },
   };
 
