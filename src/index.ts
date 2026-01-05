@@ -8,6 +8,30 @@ import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp } from "./app";
 import { runLoop } from "./loop";
 import { initLog, log } from "./util/log";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
+
+interface RalphConfig {
+  model?: string;
+  plan?: string;
+  prompt?: string;
+}
+
+function loadGlobalConfig(): RalphConfig {
+  const configPath = join(homedir(), ".config", "ralph", "config.json");
+  if (existsSync(configPath)) {
+    try {
+      const content = readFileSync(configPath, "utf-8");
+      return JSON.parse(content) as RalphConfig;
+    } catch {
+      // Silently ignore invalid config
+    }
+  }
+  return {};
+}
+
+const globalConfig = loadGlobalConfig();
 
 // When run via the bin wrapper, RALPH_USER_CWD contains the user's actual working directory
 // Change back to it so plan.md and other paths resolve correctly
@@ -99,17 +123,18 @@ async function main() {
       alias: "p",
       type: "string",
       description: "Path to the plan file",
-      default: "plan.md",
+      default: globalConfig.plan || "plan.md",
     })
     .option("model", {
       alias: "m",
       type: "string",
       description: "Model to use (provider/model format)",
-      default: "opencode/claude-opus-4-5",
+      default: globalConfig.model || "opencode/claude-opus-4-5",
     })
     .option("prompt", {
       type: "string",
       description: "Custom prompt template (use {plan} as placeholder)",
+      default: globalConfig.prompt,
     })
     .option("reset", {
       alias: "r",

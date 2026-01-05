@@ -133,43 +133,41 @@ export async function runLoop(
       const sessionId = sessionResult.data.id;
       log("loop", "Session created", { sessionId });
 
-      // Send prompt (10.14)
+      // Subscribe to events - the SSE connection is established when we start iterating
+      log("loop", "Subscribing to events...");
+      const events = await client.event.subscribe();
+
+      let promptSent = false;
       const promptText = buildPrompt(options);
       const { providerID, modelID } = parseModel(options.model);
-      log("loop", "Sending prompt", { providerID, modelID });
-      
-      await client.session.promptAsync({
-        path: { id: sessionId },
-        body: {
-          parts: [
-            {
-              type: "text",
-              text: promptText,
-            },
-          ],
-          model: {
-            providerID,
-            modelID,
-          },
-        },
-      });
-      log("loop", "Prompt sent (async)");
-      
+
       // Set idle state while waiting for LLM response
       callbacks.onIdleChanged(true);
 
-      // Subscribe to events and iterate over the stream (10.15)
-      log("loop", "Subscribing to events...");
-      const events = await client.event.subscribe();
-      log("loop", "Event subscription established, processing events...");
-      
       let receivedFirstEvent = false;
       for await (const event of events.stream) {
-        if (signal.aborted) {
-          log("loop", "Signal aborted during event processing");
-          break;
+        // When SSE connection is established, send the prompt
+        // This ensures we don't miss any events due to race conditions
+        if (event.type === "server.connected" && !promptSent) {
+          promptSent = true;
+          log("loop", "Sending prompt", { providerID, modelID });
+
+          // Fire prompt in background - don't block event loop
+          client.session.prompt({
+            path: { id: sessionId },
+            body: {
+              parts: [{ type: "text", text: promptText }],
+              model: { providerID, modelID },
+            },
+          }).catch((e) => {
+            log("loop", "Prompt error", { error: String(e) });
+          });
+
+          continue;
         }
-        
+
+        if (signal.aborted) break;
+
         // Filter events for current session ID
         if (event.type === "message.part.updated") {
           const part = event.properties.part;
