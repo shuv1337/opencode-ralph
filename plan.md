@@ -207,10 +207,18 @@ The fallback stdin handler in `src/index.ts` may conflict with OpenTUI's keyboar
   - OpenTUI now has exclusive control over stdin for keyboard handling
   - The `useKeyboard` hook in `src/app.tsx` handles 'q' and Ctrl+C quit actions
 
-- [ ] **4.3** If fallback is needed, make it conditional:
+- [x] **4.3** If fallback is needed, make it conditional:
   - Only add stdin handler if OpenTUI keyboard handling fails
   - Add a flag to detect if keyboard events are being received
   - Fall back to raw stdin only as last resort
+  
+  **Completed (2025-01-05):**
+  - Added `onKeyboardEvent` callback prop to `App` component and `startApp` function
+  - In `src/index.ts`: implemented conditional fallback with 5-second timeout
+  - Fallback only activates if no OpenTUI keyboard events received within timeout
+  - Once OpenTUI keyboard is confirmed working, fallback is permanently disabled
+  - Fallback handler supports 'q' quit, Ctrl+C quit, and 'p' pause toggle
+  - Cleanup properly clears the fallback timeout
 
 - [ ] **4.4** Test keyboard handling without fallback:
   - Remove the stdin handler

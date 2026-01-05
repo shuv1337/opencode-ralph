@@ -15,6 +15,7 @@ type AppProps = {
   persistedState: PersistedState;
   onQuit: () => void;
   iterationTimesRef?: number[];
+  onKeyboardEvent?: () => void; // Called when first keyboard event is received
 };
 
 /**
@@ -44,13 +45,23 @@ let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
  * Manages LoopState and elapsed time, rendering the full TUI layout.
  */
 /**
+ * Props for starting the app, including optional keyboard detection callback.
+ */
+export type StartAppProps = {
+  options: LoopOptions;
+  persistedState: PersistedState;
+  onQuit: () => void;
+  onKeyboardEvent?: () => void; // Called once when first keyboard event is received
+};
+
+/**
  * Starts the TUI application and returns a promise that resolves when the app exits,
  * along with state setters for external updates.
  *
  * @param props - The application props including options, persisted state, and quit handler
  * @returns Promise<StartAppResult> with exitPromise and stateSetters
  */
-export async function startApp(props: AppProps): Promise<StartAppResult> {
+export async function startApp(props: StartAppProps): Promise<StartAppResult> {
   log("app", "startApp called");
   
   // Create a mutable reference to iteration times that can be updated externally
@@ -68,11 +79,19 @@ export async function startApp(props: AppProps): Promise<StartAppResult> {
     exitResolve();
   };
 
-  log("app", "Calling render()");
+log("app", "Calling render()");
   
   // Await render to ensure CLI renderer is fully initialized
   await render(
-    () => <App {...props} onQuit={onQuit} iterationTimesRef={iterationTimesRef} />,
+    () => (
+      <App
+        options={props.options}
+        persistedState={props.persistedState}
+        onQuit={onQuit}
+        iterationTimesRef={iterationTimesRef}
+        onKeyboardEvent={props.onKeyboardEvent}
+      />
+    ),
     {
       targetFps: 15, // Reduced from 30 to lower CPU usage
       exitOnCtrlC: false,
@@ -253,10 +272,20 @@ export function App(props: AppProps) {
     }
   };
 
+  // Track if we've notified about keyboard events working (only notify once)
+  let keyboardEventNotified = false;
+
   // Keyboard handling
   // Task 3.1: Log to verify useKeyboard hook is being called
   log("app", "useKeyboard hook being registered (component body)");
   useKeyboard((e: KeyEvent) => {
+    // Task 4.3: Notify caller that OpenTUI keyboard handling is working
+    // This allows the caller to skip setting up a fallback stdin handler
+    if (!keyboardEventNotified && props.onKeyboardEvent) {
+      keyboardEventNotified = true;
+      props.onKeyboardEvent();
+    }
+    
     // Task 3.1: This log verifies the callback is being invoked when keys are pressed
     log("app", "useKeyboard callback invoked", { 
       name: e.name, 

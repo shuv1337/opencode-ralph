@@ -231,17 +231,21 @@ async function main() {
       prompt: argv.prompt || "",
     };
 
-    // Create abort controller for cancellation
+// Create abort controller for cancellation
     const abortController = new AbortController();
 
     // Keep event loop alive on Windows - stdin.resume() doesn't keep Bun's event loop active
     // This interval ensures the process stays alive until explicitly exited
     const keepaliveInterval = setInterval(() => {}, 60000);
 
+    // Task 4.3: Declare fallback timeout variable early so cleanup() can reference it
+    let fallbackTimeout: ReturnType<typeof setTimeout> | undefined;
+
     // Cleanup function for graceful shutdown
     async function cleanup() {
       log("main", "cleanup() called");
       clearInterval(keepaliveInterval);
+      if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
       abortController.abort();
       await releaseLock();
       log("main", "cleanup() done");
@@ -257,11 +261,75 @@ async function main() {
       process.exit(0);
     }
 
-    // Note: We do NOT set up a process.stdin.on("data") handler here.
-    // OpenTUI expects exclusive control over stdin for keyboard handling.
-    // The useKeyboard hook in src/app.tsx handles 'q' to quit and Ctrl+C.
-    // Adding a second stdin listener causes conflicts with OpenTUI's StdinBuffer
-    // and can lead to double-processing of keys. (See task 4.1 findings in plan.md)
+    // Task 4.3: Conditional stdin fallback for keyboard handling
+    // OpenTUI expects exclusive control over stdin, so we DON'T add a handler by default.
+    // However, if OpenTUI's keyboard handling fails (no events received within 5 seconds
+    // of first user input attempt), we fall back to raw stdin as a last resort.
+    // 
+    // The fallback is only activated if:
+    // 1. No keyboard events received from OpenTUI after startup
+    // 2. A timeout has elapsed (indicating OpenTUI may not be working)
+    //
+    // Once OpenTUI keyboard events ARE received, the fallback is permanently disabled.
+    let keyboardWorking = false;
+    let fallbackEnabled = false;
+    const KEYBOARD_FALLBACK_TIMEOUT_MS = 5000; // 5 seconds before enabling fallback
+    
+    const onKeyboardEvent = () => {
+      // OpenTUI keyboard is working - disable any fallback
+      keyboardWorking = true;
+      log("main", "OpenTUI keyboard confirmed working, fallback disabled");
+    };
+    
+    // Set up a delayed fallback that only activates if keyboard isn't working
+    fallbackTimeout = setTimeout(() => {
+      if (keyboardWorking) {
+        log("main", "Keyboard working before timeout, no fallback needed");
+        return;
+      }
+      
+      // OpenTUI keyboard may not be working - enable fallback stdin handler
+      fallbackEnabled = true;
+      log("main", "Enabling fallback stdin handler (OpenTUI keyboard not detected)");
+      
+      // Set stdin to raw mode for single-keypress detection
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+      process.stdin.resume();
+      
+      process.stdin.on("data", async (data: Buffer) => {
+        // If OpenTUI keyboard started working, ignore fallback
+        if (keyboardWorking) {
+          return;
+        }
+        
+        const char = data.toString();
+        log("main", "Fallback stdin received", { char: char.replace(/\x03/g, "^C") });
+        
+        // Handle 'q' for quit
+        if (char === "q" || char === "Q") {
+          await requestQuit("fallback-stdin-q");
+        }
+        // Handle Ctrl+C (0x03)
+        if (char === "\x03") {
+          await requestQuit("fallback-stdin-ctrl-c");
+        }
+        // Handle 'p' for pause toggle
+        if (char === "p" || char === "P") {
+          log("main", "Fallback stdin: toggle pause");
+          const PAUSE_FILE = ".ralph-pause";
+          const file = Bun.file(PAUSE_FILE);
+          const exists = await file.exists();
+          if (exists) {
+            const fs = await import("node:fs/promises");
+            await fs.unlink(PAUSE_FILE);
+          } else {
+            await Bun.write(PAUSE_FILE, String(process.pid));
+          }
+        }
+      });
+    }, KEYBOARD_FALLBACK_TIMEOUT_MS);
 
     // Handle SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
     process.on("SIGINT", async () => {
@@ -278,7 +346,7 @@ async function main() {
       process.exit(0);
     });
 
-    // Start the TUI app and get state setters
+// Start the TUI app and get state setters
     log("main", "Starting TUI app");
     const { exitPromise, stateSetters } = await startApp({
       options: loopOptions,
@@ -287,6 +355,7 @@ async function main() {
         log("main", "onQuit callback triggered");
         abortController.abort();
       },
+      onKeyboardEvent, // Task 4.3: Callback to detect if OpenTUI keyboard is working
     });
     log("main", "TUI app started, state setters available");
 
