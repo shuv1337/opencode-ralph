@@ -57,6 +57,16 @@ if (targets.length === 0) {
 // Clean dist directory
 await $`rm -rf dist`;
 
+// For cross-platform builds, install platform-specific dependencies for all targets
+// @opentui/core has native modules that need to be available for each platform
+const skipInstall = process.argv.includes("--skip-install");
+if (!singleFlag && !skipInstall) {
+  console.log("Installing cross-platform dependencies...");
+  const opentuiVersion = pkg.dependencies["@opentui/core"];
+  await $`bun install --os="*" --cpu="*" @opentui/core@${opentuiVersion}`;
+  console.log("");
+}
+
 // Track built binaries for publish script
 const binaries: Record<string, string> = {};
 
