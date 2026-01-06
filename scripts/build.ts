@@ -19,7 +19,7 @@ const result = await Bun.build({
     outfile: "./dist/ralph",
     autoloadBunfig: false, // Ignore bunfig.toml in user's CWD (preloads don't work in compiled exes)
     // @ts-expect-error - These options exist at runtime but aren't in the types yet
-    autoloadTsconfig: true,
+    autoloadTsconfig: false, // JSX is pre-compiled by solidPlugin; don't pick up user's tsconfig
     autoloadPackageJson: true,
   },
 });
