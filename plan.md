@@ -62,13 +62,13 @@
 - [x] Read `promptFile` from global config in `src/index.ts`
 
 #### Prompt Building Logic
-- [ ] Create `buildPrompt()` function in `src/loop.ts`
-- [ ] Implement precedence: `--prompt` > `--prompt-file` > DEFAULT_PROMPT
-- [ ] Read prompt file using `Bun.file()` when `promptFile` specified
-- [ ] Check file existence with `file.exists()` before reading
-- [ ] Replace `{plan}` placeholder with `options.planFile`
-- [ ] Replace `{{PLAN_FILE}}` placeholder with `options.planFile`
-- [ ] Return DEFAULT_PROMPT as fallback
+- [x] Create `buildPrompt()` function in `src/loop.ts`
+- [x] Implement precedence: `--prompt` > `--prompt-file` > DEFAULT_PROMPT
+- [x] Read prompt file using `Bun.file()` when `promptFile` specified
+- [x] Check file existence with `file.exists()` before reading
+- [x] Replace `{plan}` placeholder with `options.planFile`
+- [x] Replace `{{PLAN_FILE}}` placeholder with `options.planFile`
+- [x] Return DEFAULT_PROMPT as fallback
 
 #### Example Template
 - [ ] Create `.ralph-prompt.md.example` template file

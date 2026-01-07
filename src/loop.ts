@@ -187,11 +187,36 @@ async function getOrCreateOpencodeServer(options: {
 }
 
 /**
- * Build the prompt string by replacing {plan} placeholders with the actual plan file path.
+ * Build the prompt string with precedence: --prompt > --prompt-file > DEFAULT_PROMPT.
+ * Replaces {plan} and {{PLAN_FILE}} placeholders with the actual plan file path.
  */
-export function buildPrompt(options: LoopOptions): string {
-  const template = options.prompt || DEFAULT_PROMPT;
-  return template.replace(/\{plan\}/g, options.planFile);
+export async function buildPrompt(options: LoopOptions): Promise<string> {
+  let template: string;
+
+  // Precedence 1: --prompt CLI option (explicit string)
+  if (options.prompt && options.prompt.trim()) {
+    template = options.prompt;
+  }
+  // Precedence 2: --prompt-file (read from file if it exists)
+  else if (options.promptFile) {
+    const file = Bun.file(options.promptFile);
+    if (await file.exists()) {
+      template = await file.text();
+      log("loop", "Loaded prompt from file", { path: options.promptFile });
+    } else {
+      // File doesn't exist, fall through to default
+      template = DEFAULT_PROMPT;
+    }
+  }
+  // Precedence 3: DEFAULT_PROMPT fallback
+  else {
+    template = DEFAULT_PROMPT;
+  }
+
+  // Replace both {plan} and {{PLAN_FILE}} placeholders
+  return template
+    .replace(/\{plan\}/g, options.planFile)
+    .replace(/\{\{PLAN_FILE\}\}/g, options.planFile);
 }
 
 /**
@@ -326,7 +351,7 @@ export async function runLoop(
       callbacks.onTasksUpdated(done, total);
 
       // Parse model and build prompt before session creation
-      const promptText = buildPrompt(options);
+      const promptText = await buildPrompt(options);
       const { providerID, modelID } = parseModel(options.model);
 
       // Create session (10.13)

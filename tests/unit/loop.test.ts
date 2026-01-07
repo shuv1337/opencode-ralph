@@ -11,39 +11,55 @@ describe("buildPrompt", () => {
   });
 
   describe("template substitution", () => {
-    it("should replace {plan} with options.planFile", () => {
+    it("should replace {plan} with options.planFile", async () => {
       const options = createOptions({
         prompt: "Read {plan} and complete the task.",
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       expect(result).toBe("Read plan.md and complete the task.");
     });
 
-    it("should replace multiple {plan} occurrences", () => {
+    it("should replace multiple {plan} occurrences", async () => {
       const options = createOptions({
         prompt: "First read {plan}, then update {plan} when done.",
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       expect(result).toBe("First read plan.md, then update plan.md when done.");
     });
 
-    it("should handle custom plan file path", () => {
+    it("should handle custom plan file path", async () => {
       const options = createOptions({
         planFile: "docs/my-plan.md",
         prompt: "Read {plan} now.",
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       expect(result).toBe("Read docs/my-plan.md now.");
+    });
+
+    it("should replace {{PLAN_FILE}} placeholder", async () => {
+      const options = createOptions({
+        prompt: "Process {{PLAN_FILE}} and complete tasks.",
+      });
+      const result = await buildPrompt(options);
+      expect(result).toBe("Process plan.md and complete tasks.");
+    });
+
+    it("should replace both {plan} and {{PLAN_FILE}} placeholders", async () => {
+      const options = createOptions({
+        prompt: "Read {plan} first, then update {{PLAN_FILE}}.",
+      });
+      const result = await buildPrompt(options);
+      expect(result).toBe("Read plan.md first, then update plan.md.");
     });
   });
 
   describe("custom prompt", () => {
-    it("should use custom prompt instead of default", () => {
+    it("should use custom prompt instead of default", async () => {
       const customPrompt = "Custom instruction: process {plan} file.";
       const options = createOptions({
         prompt: customPrompt,
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       // Verify the custom prompt is used (with {plan} substituted)
       expect(result).toBe("Custom instruction: process plan.md file.");
       // Verify it's NOT the default prompt
@@ -51,24 +67,24 @@ describe("buildPrompt", () => {
       expect(result).not.toContain("Pick ONE task");
     });
 
-    it("should preserve custom prompt content exactly except for {plan} placeholder", () => {
+    it("should preserve custom prompt content exactly except for {plan} placeholder", async () => {
       const customPrompt = "Do exactly this: {plan} - no more, no less.";
       const options = createOptions({
         planFile: "tasks.md",
         prompt: customPrompt,
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       expect(result).toBe("Do exactly this: tasks.md - no more, no less.");
     });
   });
 
   describe("default prompt", () => {
-    it("should use DEFAULT_PROMPT when options.prompt is undefined", () => {
+    it("should use DEFAULT_PROMPT when options.prompt is undefined", async () => {
       const options = createOptions({
         planFile: "plan.md",
         prompt: undefined,
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       // Verify it uses the default prompt with {plan} substituted
       expect(result).toContain("READ all of plan.md");
       expect(result).toContain("Pick ONE task");
@@ -79,16 +95,57 @@ describe("buildPrompt", () => {
       expect(result).not.toContain("{plan}");
     });
 
-    it("should substitute {plan} in default prompt with custom planFile", () => {
+    it("should substitute {plan} in default prompt with custom planFile", async () => {
       const options = createOptions({
         planFile: "docs/custom-plan.md",
         prompt: undefined,
       });
-      const result = buildPrompt(options);
+      const result = await buildPrompt(options);
       // The default prompt has two {plan} occurrences - both should be replaced
       expect(result).toContain("READ all of docs/custom-plan.md");
       expect(result).toContain("Update docs/custom-plan.md");
       expect(result).not.toContain("{plan}");
+    });
+
+    it("should use DEFAULT_PROMPT when options.prompt is empty string", async () => {
+      const options = createOptions({
+        planFile: "plan.md",
+        prompt: "",
+      });
+      const result = await buildPrompt(options);
+      // Verify it uses the default prompt
+      expect(result).toContain("READ all of plan.md");
+    });
+
+    it("should use DEFAULT_PROMPT when options.prompt is whitespace only", async () => {
+      const options = createOptions({
+        planFile: "plan.md",
+        prompt: "   ",
+      });
+      const result = await buildPrompt(options);
+      // Verify it uses the default prompt
+      expect(result).toContain("READ all of plan.md");
+    });
+  });
+
+  describe("precedence", () => {
+    it("should prefer --prompt over --prompt-file", async () => {
+      const options = createOptions({
+        prompt: "Explicit prompt {plan}",
+        promptFile: ".ralph-prompt.md", // File doesn't exist, but --prompt takes precedence anyway
+      });
+      const result = await buildPrompt(options);
+      expect(result).toBe("Explicit prompt plan.md");
+    });
+
+    it("should fall back to DEFAULT_PROMPT when prompt-file doesn't exist", async () => {
+      const options = createOptions({
+        prompt: undefined,
+        promptFile: "nonexistent-file.md",
+      });
+      const result = await buildPrompt(options);
+      // Should fall back to DEFAULT_PROMPT
+      expect(result).toContain("READ all of plan.md");
     });
   });
 });
