@@ -423,7 +423,7 @@
 - [x] Copy `nord.json` theme file
 - [x] Copy `one-dark.json` theme file
 - [x] Copy `opencode.json` theme file
-- [ ] Copy `orng.json` theme file
+- [x] Copy `orng.json` theme file
 - [ ] Copy `osaka-jade.json` theme file
 - [ ] Copy `palenight.json` theme file
 - [ ] Copy `rosepine.json` theme file
