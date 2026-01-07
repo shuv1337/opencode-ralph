@@ -79,6 +79,7 @@ export type LoopOptions = {
   promptFile?: string;
   serverUrl?: string;
   serverTimeoutMs?: number;
+  agent?: string;
 };
 
 /**

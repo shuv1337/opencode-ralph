@@ -422,6 +422,7 @@ export async function runLoop(
             body: {
               parts: [{ type: "text", text: message }],
               model: { providerID, modelID },
+              ...(options.agent && { agent: options.agent }),
             },
           });
         };
@@ -457,6 +458,7 @@ export async function runLoop(
               body: {
                 parts: [{ type: "text", text: promptText }],
                 model: { providerID, modelID },
+                ...(options.agent && { agent: options.agent }),
               },
             }).catch((e) => {
               log("loop", "Prompt error", { error: String(e) });

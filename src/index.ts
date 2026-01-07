@@ -19,6 +19,7 @@ interface RalphConfig {
   promptFile?: string;
   server?: string;
   serverTimeout?: number;
+  agent?: string;
 }
 
 function loadGlobalConfig(): RalphConfig {
@@ -172,6 +173,12 @@ async function main() {
       description: "Health check timeout in ms for external server",
       default: globalConfig.serverTimeout ?? 5000,
     })
+    .option("agent", {
+      alias: "a",
+      type: "string",
+      description: "Agent to use (e.g., 'build', 'plan', 'general')",
+      default: globalConfig.agent,
+    })
     .help()
     .alias("h", "help")
     .version(false)
@@ -251,6 +258,7 @@ async function main() {
       promptFile: argv.promptFile,
       serverUrl: argv.server,
       serverTimeoutMs: argv.serverTimeout,
+      agent: argv.agent,
     };
 
 // Create abort controller for cancellation

@@ -115,18 +115,18 @@
 ### 1.4 Agent Selection (`-a` flag)
 
 #### CLI Option
-- [ ] Add `--agent` option to yargs in `src/index.ts`
-- [ ] Add `-a` alias for `--agent`
-- [ ] Add description: "Agent to use (e.g., 'code', 'plan', 'build')"
+- [x] Add `--agent` option to yargs in `src/index.ts`
+- [x] Add `-a` alias for `--agent`
+- [x] Add description: "Agent to use (e.g., 'code', 'plan', 'build')"
 
 #### State and Config
-- [ ] Add `agent` field to `LoopOptions` in `src/state.ts`
-- [ ] Add `agent` field to `RalphConfig` type
-- [ ] Read `agent` from global config in `src/index.ts`
+- [x] Add `agent` field to `LoopOptions` in `src/state.ts`
+- [x] Add `agent` field to `RalphConfig` type
+- [x] Read `agent` from global config in `src/index.ts`
 
 #### API Integration
-- [ ] Pass `agent` to `client.session.prompt()` body in `src/loop.ts`
-- [ ] Only include `agent` field when options.agent is defined
+- [x] Pass `agent` to `client.session.prompt()` body in `src/loop.ts`
+- [x] Only include `agent` field when options.agent is defined
 
 ---
 
