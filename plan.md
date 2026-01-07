@@ -690,4 +690,4 @@
 - [x] Verify tokens accumulate properly
 - [x] Verify toasts appear and dismiss
 - [x] Verify clipboard copies on Linux/macOS
-- [ ] Verify all keybindings work without conflicts
+- [x] Verify all keybindings work without conflicts
