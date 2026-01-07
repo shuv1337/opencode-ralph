@@ -1,7 +1,7 @@
 import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
-import { createSignal, onMount } from "solid-js";
-import { colors } from "./colors";
+import { createSignal } from "solid-js";
+import { useTheme } from "../context/ThemeContext";
 
 export type SteeringOverlayProps = {
   visible: boolean;
@@ -15,6 +15,8 @@ export type SteeringOverlayProps = {
  */
 export function SteeringOverlay(props: SteeringOverlayProps) {
   const [input, setInput] = createSignal("");
+  const { theme } = useTheme();
+  const t = theme();
 
   // Handle keyboard events for the steering input
   useKeyboard((e: KeyEvent) => {
@@ -58,35 +60,35 @@ export function SteeringOverlay(props: SteeringOverlayProps) {
       height="100%"
       justifyContent="center"
       alignItems="center"
-      backgroundColor={colors.bgHighlight}
+      backgroundColor={t.backgroundElement}
     >
       <box
         width="60%"
         padding={1}
         borderStyle="single"
-        borderColor={colors.purple}
-        backgroundColor={colors.bgPanel}
+        borderColor={t.accent}
+        backgroundColor={t.backgroundPanel}
         flexDirection="column"
       >
         {/* Title */}
-        <text fg={colors.purple}>Steer Agent</text>
+        <text fg={t.accent}>Steer Agent</text>
 
         {/* Input box */}
         <box
           marginTop={1}
           padding={1}
           borderStyle="single"
-          borderColor={colors.border}
-          backgroundColor={colors.bgDark}
+          borderColor={t.border}
+          backgroundColor={t.background}
         >
-          <text fg={input() ? colors.fg : colors.fgMuted}>
+          <text fg={input() ? t.text : t.textMuted}>
             {input() || "Type message and press Enter"}
           </text>
         </box>
 
         {/* Help text */}
-        <text fg={colors.fgDark} marginTop={1}>
-          <span style={{ fg: colors.fgMuted }}>Enter</span> send  <span style={{ fg: colors.fgMuted }}>Esc</span> cancel
+        <text fg={t.borderSubtle} marginTop={1}>
+          <span style={{ fg: t.textMuted }}>Enter</span> send  <span style={{ fg: t.textMuted }}>Esc</span> cancel
         </text>
       </box>
     </box>

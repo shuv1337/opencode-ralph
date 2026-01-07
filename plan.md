@@ -462,7 +462,7 @@
 - [x] Update `src/components/footer.tsx` to use theme colors
 - [x] Update `src/components/log.tsx` to use theme colors
 - [x] Update dialog components to use theme colors
-- [ ] Update steering overlay to use theme colors
+- [x] Update steering overlay to use theme colors
 
 #### Colors Migration
 - [ ] Preserve existing `colors.ts` values as fallback
