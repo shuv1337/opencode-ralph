@@ -340,8 +340,16 @@ export async function runLoop(
       const sessionId = sessionResult.data.id;
       log("loop", "Session created", { sessionId });
 
+      // Track whether current session is active (for steering mode guard)
+      let sessionActive = true;
+
       // Create sendMessage function for steering mode
       const sendMessage = async (message: string): Promise<void> => {
+        // Guard: check for active session before sending
+        if (!sessionActive) {
+          log("loop", "Cannot send steering message: no active session");
+          throw new Error("No active session");
+        }
         log("loop", "Sending steering message", { sessionId, message: message.slice(0, 50) });
         await client.session.prompt({
           path: { id: sessionId },
@@ -446,6 +454,7 @@ export async function runLoop(
         // Session completion detection (10.17)
         if (event.type === "session.idle" && event.properties.sessionID === sessionId) {
           log("loop", "Session idle, breaking event loop");
+          sessionActive = false;
           break;
         }
 
@@ -461,6 +470,7 @@ export async function runLoop(
           }
           
           log("loop", "Session error", { errorMessage });
+          sessionActive = false;
           callbacks.onError(errorMessage);
           throw new Error(errorMessage);
         }
