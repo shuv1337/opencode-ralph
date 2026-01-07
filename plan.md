@@ -154,12 +154,12 @@
 - [x] Add Escape key handler to call `pop()`
 
 #### Confirmation Dialog
-- [ ] Create `src/ui/DialogConfirm.tsx` file
-- [ ] Add `title` and `message` props
-- [ ] Add Confirm/Cancel buttons
-- [ ] Add Y key shortcut for confirm
-- [ ] Add N key shortcut for cancel
-- [ ] Call `onConfirm` or `onCancel` callback accordingly
+- [x] Create `src/ui/DialogConfirm.tsx` file
+- [x] Add `title` and `message` props
+- [x] Add Confirm/Cancel buttons
+- [x] Add Y key shortcut for confirm
+- [x] Add N key shortcut for cancel
+- [x] Call `onConfirm` or `onCancel` callback accordingly
 
 #### Prompt Dialog
 - [ ] Create `src/ui/DialogPrompt.tsx` file
