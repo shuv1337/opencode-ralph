@@ -609,7 +609,7 @@
            - useLoopStats hook can replace iterationTimes + elapsed + ETA
            - Activity log events are already in LoopState.events (ToolEvent[])
       -->
-- [ ] Create hook instances in App component
+- [x] Create hook instances in App component
 - [ ] Wire dispatch actions to UI handlers
 - [ ] Replace direct signal updates with dispatch calls
 

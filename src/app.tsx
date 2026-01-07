@@ -24,6 +24,8 @@ import { legacyColors as colors } from "./lib/theme-colors";
 import { calculateEta } from "./util/time";
 import { log } from "./util/log";
 import { createDebugSession } from "./loop";
+import { createLoopState, type LoopStateStore, type LoopAction } from "./hooks/useLoopState";
+import { createLoopStats, type LoopStatsStore } from "./hooks/useLoopStats";
 
 type AppProps = {
   options: LoopOptions;
@@ -144,7 +146,30 @@ export function App(props: AppProps) {
   // which may interfere with logging and other output (matches OpenCode pattern).
   renderer.disableStdoutInterception();
   
-  // State signal for loop state
+  // Create loop state store using the hook architecture
+  // This provides a reducer-based state management pattern with dispatch actions
+  const loopStore = createLoopState({
+    status: "starting",
+    iteration: props.persistedState.iterationTimes.length + 1,
+    tasksComplete: 0,
+    totalTasks: 0,
+    commits: 0,
+    linesAdded: 0,
+    linesRemoved: 0,
+    events: [],
+    isIdle: true,
+  });
+  
+  // Create loop stats store for tracking iteration timing and ETA
+  const loopStats = createLoopStats();
+  
+  // Initialize loop stats with persisted state
+  loopStats.initialize(
+    props.persistedState.startTime,
+    props.persistedState.iterationTimes
+  );
+  
+  // State signal for loop state (legacy - being migrated to loopStore)
   // Initialize iteration to length + 1 since we're about to start the next iteration
   const [state, setState] = createSignal<LoopState>({
     status: "starting",
@@ -214,10 +239,13 @@ export function App(props: AppProps) {
 
   // Update elapsed time periodically (5000ms to reduce render frequency)
   // Skip updates when idle or paused to reduce unnecessary re-renders
+  // Also ticks the loopStats for pause-aware elapsed time tracking
   const elapsedInterval = setInterval(() => {
     const currentState = state();
     if (!currentState.isIdle && currentState.status !== "paused") {
       setElapsed(Date.now() - props.persistedState.startTime);
+      // Tick loopStats for pause-aware elapsed time (hook-based approach)
+      loopStats.tick();
     }
   }, 5000);
 
@@ -248,10 +276,16 @@ export function App(props: AppProps) {
       const fs = await import("node:fs/promises");
       await fs.unlink(PAUSE_FILE);
       setState((prev) => ({ ...prev, status: "running" }));
+      // Also dispatch to loopStore (hook-based approach)
+      loopStore.dispatch({ type: "RESUME" });
+      loopStats.resume();
     } else {
       // Pause: create pause file and update status
       await Bun.write(PAUSE_FILE, String(process.pid));
       setState((prev) => ({ ...prev, status: "paused" }));
+      // Also dispatch to loopStore (hook-based approach)
+      loopStore.dispatch({ type: "PAUSE" });
+      loopStats.pause();
     }
   };
 
@@ -290,6 +324,8 @@ export function App(props: AppProps) {
             setShowTasks={setShowTasks}
             tasks={tasks}
             refreshTasks={refreshTasks}
+            loopStore={loopStore}
+            loopStats={loopStats}
           />
         </CommandProvider>
       </DialogProvider>
@@ -319,6 +355,9 @@ type AppContentProps = {
   setShowTasks: (v: boolean) => void;
   tasks: () => Task[];
   refreshTasks: () => Promise<void>;
+  // Hook-based state stores (for gradual migration)
+  loopStore: LoopStateStore;
+  loopStats: LoopStatsStore;
 };
 
 /**
