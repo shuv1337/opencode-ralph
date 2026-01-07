@@ -568,14 +568,14 @@
 ### 3.5 Hooks Architecture Refactor
 
 #### Loop State Hook
-- [ ] Create `src/hooks/useLoopState.ts` file
-- [ ] Define `LoopAction` type union
-- [ ] Define reducer function for state transitions
-- [ ] Create `createLoopState()` function
-- [ ] Create state signal with initial idle state
-- [ ] Create `dispatch()` function for actions
-- [ ] Create derived helpers: `isRunning()`, `isPaused()`, `isIdle()`
-- [ ] Add session-related derived helpers
+- [x] Create `src/hooks/useLoopState.ts` file
+- [x] Define `LoopAction` type union
+- [x] Define reducer function for state transitions
+- [x] Create `createLoopState()` function
+- [x] Create state signal with initial idle state
+- [x] Create `dispatch()` function for actions
+- [x] Create derived helpers: `isRunning()`, `isPaused()`, `isIdle()`
+- [x] Add session-related derived helpers
 
 #### Loop Stats Hook
 - [ ] Create `src/hooks/useLoopStats.ts` file
