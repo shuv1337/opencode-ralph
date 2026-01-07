@@ -441,11 +441,11 @@
 - [x] Export `themeNames` array for listing
 
 #### Theme Resolver
-- [ ] Create `src/lib/theme-resolver.ts` file
-- [ ] Define `Theme` interface with color fields
-- [ ] Implement `resolveTheme()` to parse theme JSON
-- [ ] Handle variable references in theme colors
-- [ ] Support dark/light mode variants
+- [x] Create `src/lib/theme-resolver.ts` file
+- [x] Define `Theme` interface with color fields
+- [x] Implement `resolveTheme()` to parse theme JSON
+- [x] Handle variable references in theme colors
+- [x] Support dark/light mode variants
 
 #### Theme Context
 - [ ] Create `src/context/ThemeContext.tsx` file
