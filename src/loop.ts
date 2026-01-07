@@ -7,6 +7,31 @@ import { log } from "./util/log.js";
 const DEFAULT_PROMPT = `READ all of {plan}. Pick ONE task. If needed, verify via web/code search (this applies to packages, knowledge, deterministic data - NEVER VERIFY EDIT TOOLS WORKED OR THAT YOU COMMITED SOMETHING. BE PRAGMATIC ABOUT EVERYTHING). Complete task. Commit change (update the plan.md in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Update {plan}. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and exit. NEVER GIT PUSH. ONLY COMMIT.`;
 
 const DEFAULT_PORT = 4190;
+
+// Backoff configuration
+const BACKOFF_BASE_MS = 5000; // 5 seconds
+const BACKOFF_MAX_MS = 300000; // 5 minutes
+
+/**
+ * Calculate exponential backoff delay with jitter.
+ * Formula: base * 2^(attempt-1) with 10% jitter, capped at max.
+ * @param attempt - The attempt number (1-based)
+ * @returns Delay in milliseconds
+ */
+export function calculateBackoffMs(attempt: number): number {
+  if (attempt <= 0) return 0;
+  
+  // Exponential growth: base * 2^(attempt-1)
+  const exponentialDelay = BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+  
+  // Cap at maximum delay
+  const cappedDelay = Math.min(exponentialDelay, BACKOFF_MAX_MS);
+  
+  // Add 10% jitter to prevent synchronized retries
+  const jitter = cappedDelay * 0.1 * Math.random();
+  
+  return Math.round(cappedDelay + jitter);
+}
 const DEFAULT_HOSTNAME = "127.0.0.1";
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect, mock } from "bun:test";
-import { buildPrompt, parseModel, validateAndNormalizeServerUrl, checkServerHealth, connectToExternalServer } from "../../src/loop.js";
+import { buildPrompt, parseModel, validateAndNormalizeServerUrl, checkServerHealth, connectToExternalServer, calculateBackoffMs } from "../../src/loop.js";
 import type { LoopOptions } from "../../src/state.js";
 
 describe("buildPrompt", () => {
@@ -360,5 +360,77 @@ describe("connectToExternalServer", () => {
     await expect(connectToExternalServer("http://localhost:4190")).rejects.toThrow("Server unhealthy");
     
     globalThis.fetch = originalFetch;
+  });
+});
+
+describe("calculateBackoffMs", () => {
+  describe("base delay", () => {
+    it("should return ~5000ms for first attempt", () => {
+      const result = calculateBackoffMs(1);
+      // Base is 5000ms, with up to 10% jitter = 5000-5500
+      expect(result).toBeGreaterThanOrEqual(5000);
+      expect(result).toBeLessThanOrEqual(5500);
+    });
+  });
+
+  describe("exponential growth", () => {
+    it("should return ~10000ms for second attempt (2x base)", () => {
+      const result = calculateBackoffMs(2);
+      // 5000 * 2^1 = 10000, with 10% jitter = 10000-11000
+      expect(result).toBeGreaterThanOrEqual(10000);
+      expect(result).toBeLessThanOrEqual(11000);
+    });
+
+    it("should return ~20000ms for third attempt (4x base)", () => {
+      const result = calculateBackoffMs(3);
+      // 5000 * 2^2 = 20000, with 10% jitter = 20000-22000
+      expect(result).toBeGreaterThanOrEqual(20000);
+      expect(result).toBeLessThanOrEqual(22000);
+    });
+
+    it("should return ~40000ms for fourth attempt (8x base)", () => {
+      const result = calculateBackoffMs(4);
+      // 5000 * 2^3 = 40000, with 10% jitter = 40000-44000
+      expect(result).toBeGreaterThanOrEqual(40000);
+      expect(result).toBeLessThanOrEqual(44000);
+    });
+  });
+
+  describe("maximum cap", () => {
+    it("should cap at 300000ms (5 minutes) for very high attempts", () => {
+      const result = calculateBackoffMs(10);
+      // 5000 * 2^9 = 2,560,000 but capped at 300000, with 10% jitter = 300000-330000
+      expect(result).toBeGreaterThanOrEqual(300000);
+      expect(result).toBeLessThanOrEqual(330000);
+    });
+
+    it("should cap at 300000ms even for extremely high attempts", () => {
+      const result = calculateBackoffMs(100);
+      expect(result).toBeGreaterThanOrEqual(300000);
+      expect(result).toBeLessThanOrEqual(330000);
+    });
+  });
+
+  describe("edge cases", () => {
+    it("should return 0 for zero attempt", () => {
+      expect(calculateBackoffMs(0)).toBe(0);
+    });
+
+    it("should return 0 for negative attempt", () => {
+      expect(calculateBackoffMs(-1)).toBe(0);
+    });
+  });
+
+  describe("jitter", () => {
+    it("should add randomized jitter (results should vary)", () => {
+      // Run multiple times and verify we get different results
+      const results = new Set<number>();
+      for (let i = 0; i < 10; i++) {
+        results.add(calculateBackoffMs(1));
+      }
+      // With 10% jitter, we should get some variation
+      // (statistically unlikely to get same value 10 times)
+      expect(results.size).toBeGreaterThan(1);
+    });
   });
 });

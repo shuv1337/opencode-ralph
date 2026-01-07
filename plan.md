@@ -83,11 +83,11 @@
 ### 1.3 Error Retry with Exponential Backoff
 
 #### Backoff Calculation
-- [ ] Create `calculateBackoffMs()` function in `src/loop.ts`
-- [ ] Set base delay to 5000ms (5 seconds)
-- [ ] Implement exponential growth: `base * 2^(attempt-1)`
-- [ ] Cap maximum delay at 300000ms (5 minutes)
-- [ ] Add 10% jitter to prevent synchronized retries
+- [x] Create `calculateBackoffMs()` function in `src/loop.ts`
+- [x] Set base delay to 5000ms (5 seconds)
+- [x] Implement exponential growth: `base * 2^(attempt-1)`
+- [x] Cap maximum delay at 300000ms (5 minutes)
+- [x] Add 10% jitter to prevent synchronized retries
 
 #### Error Tracking
 - [ ] Add `errorCount` variable in `runLoop` (local, not persisted)
