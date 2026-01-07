@@ -400,7 +400,7 @@
 ### 3.1 Theme System
 
 #### Theme Files
-- [ ] Create `src/lib/themes/` directory
+- [x] Create `src/lib/themes/` directory
 - [ ] Copy `aura.json` theme file
 - [ ] Copy `ayu.json` theme file
 - [ ] Copy `catppuccin-frappe.json` theme file
