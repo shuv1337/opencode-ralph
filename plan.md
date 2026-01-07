@@ -667,7 +667,7 @@
 - [x] Add tests for `calculateBackoffMs()` function
 - [x] Add tests for `parsePlanTasks()` function
 - [x] Add tests for `detectClipboardTool()` function
-- [ ] Add tests for `detectInstalledTerminals()` function
+- [x] Add tests for `detectInstalledTerminals()` function
 - [ ] Add tests for `resolveTheme()` function
 
 ### Integration Tests
