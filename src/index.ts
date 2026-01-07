@@ -508,6 +508,24 @@ async function main() {
           isIdle,
         }));
       },
+      onSessionCreated: (session) => {
+        // Store session info in state for steering mode
+        stateSetters.setState((prev) => ({
+          ...prev,
+          sessionId: session.sessionId,
+          serverUrl: session.serverUrl,
+          attached: session.attached,
+        }));
+      },
+      onSessionEnded: (_sessionId) => {
+        // Clear session fields when session ends
+        stateSetters.setState((prev) => ({
+          ...prev,
+          sessionId: undefined,
+          serverUrl: undefined,
+          attached: undefined,
+        }));
+      },
     }, abortController.signal).catch((error) => {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);
