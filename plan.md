@@ -171,11 +171,11 @@
 - [x] Call `onSubmit(value)` or `onCancel` callback
 
 #### Alert Dialog
-- [ ] Create `src/ui/DialogAlert.tsx` file
-- [ ] Add message display area
-- [ ] Add Dismiss button
-- [ ] Add Enter/Escape to dismiss
-- [ ] Call `onDismiss` callback
+- [x] Create `src/ui/DialogAlert.tsx` file
+- [x] Add message display area
+- [x] Add Dismiss button
+- [x] Add Enter/Escape to dismiss
+- [x] Call `onDismiss` callback
 
 #### Dialog Stack Renderer
 - [x] Create `DialogStack` component in `src/context/DialogContext.tsx`
