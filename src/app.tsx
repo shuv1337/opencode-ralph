@@ -138,6 +138,13 @@ export function App(props: AppProps) {
     isIdle: true, // Starts idle, waiting for first LLM response
   });
 
+  // Steering mode state signals
+  const [commandMode, setCommandMode] = createSignal(false);
+  const [commandInput, setCommandInput] = createSignal("");
+
+  // Helper to check if any input is focused (dialogs, steering mode, etc.)
+  const isInputFocused = () => commandMode();
+
   // Signal to track iteration times (for ETA calculation)
   const [iterationTimes, setIterationTimes] = createSignal<number[]>(
     props.iterationTimesRef || [...props.persistedState.iterationTimes]

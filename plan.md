@@ -20,9 +20,9 @@
 - [x] Clear session fields in `LoopState` when `onSessionEnded` fires
 
 #### Steering UI State
-- [ ] Add `commandMode` signal to `src/app.tsx`
-- [ ] Add `commandInput` signal to `src/app.tsx`
-- [ ] Create `isInputFocused()` helper function to check dialog/input state
+- [x] Add `commandMode` signal to `src/app.tsx`
+- [x] Add `commandInput` signal to `src/app.tsx`
+- [x] Create `isInputFocused()` helper function to check dialog/input state
 
 #### Steering Keyboard Handler
 - [ ] Add `:` key detection logic (handle colon, semicolon+shift, raw `:`)
