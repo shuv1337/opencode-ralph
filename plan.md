@@ -484,9 +484,11 @@
 - [x] Identify token event name in current SDK (e.g., `step.finish`)
       <!-- Token event is `step-finish` part type in `message.part.updated` events.
            Structure: StepFinishPart.tokens = { input, output, reasoning, cache: { read, write } } -->
-- [ ] Hook into SSE event handler in loop
-- [ ] Extract token counts from event payload
-- [ ] Call `addTokens()` with extracted values
+- [x] Hook into SSE event handler in loop
+- [x] Extract token counts from event payload
+- [x] Call `addTokens()` with extracted values
+      <!-- Added onTokens callback to LoopCallbacks and handler for step-finish parts in SSE loop.
+           Callback maps StepFinishPart.tokens to TokenUsage type and fires onTokens callback. -->
 
 #### Token Display
 - [ ] Add token display to footer component

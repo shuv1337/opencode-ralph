@@ -357,6 +357,18 @@ export function parseModel(model: string): { providerID: string; modelID: string
   };
 }
 
+/**
+ * Token usage data from step-finish events.
+ * Maps to StepFinishPart.tokens structure from the SDK.
+ */
+export type TokenUsage = {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cacheWrite: number;
+};
+
 export type LoopCallbacks = {
   onIterationStart: (iteration: number) => void;
   onEvent: (event: ToolEvent) => void;
@@ -377,6 +389,8 @@ export type LoopCallbacks = {
   onSessionEnded?: (sessionId: string) => void;
   onBackoff?: (backoffMs: number, retryAt: number) => void;
   onBackoffCleared?: () => void;
+  /** Called when token usage data is received from step-finish events */
+  onTokens?: (tokens: TokenUsage) => void;
 };
 
 export async function runLoop(
@@ -624,6 +638,25 @@ export async function runLoop(
                   timestamp: Date.now(),
                 });
               }
+            }
+
+            // Step finish event - extract token usage data
+            if (part.type === "step-finish" && callbacks.onTokens) {
+              const tokens = part.tokens;
+              log("loop", "Step finished with tokens", {
+                input: tokens.input,
+                output: tokens.output,
+                reasoning: tokens.reasoning,
+                cacheRead: tokens.cache.read,
+                cacheWrite: tokens.cache.write,
+              });
+              callbacks.onTokens({
+                input: tokens.input,
+                output: tokens.output,
+                reasoning: tokens.reasoning,
+                cacheRead: tokens.cache.read,
+                cacheWrite: tokens.cache.write,
+              });
             }
           }
 
