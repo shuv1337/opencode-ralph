@@ -448,14 +448,14 @@
 - [x] Support dark/light mode variants
 
 #### Theme Context
-- [ ] Create `src/context/ThemeContext.tsx` file
-- [ ] Create `ThemeContext` using `createContext()`
-- [ ] Create `ThemeProvider` component
-- [ ] Read OpenCode state from `~/.local/state/opencode/kv.json`
-- [ ] Parse theme preference from OpenCode state
-- [ ] Create `theme()` accessor for current theme
-- [ ] Default to "opencode" theme
-- [ ] Create `useTheme()` hook
+- [x] Create `src/context/ThemeContext.tsx` file
+- [x] Create `ThemeContext` using `createContext()`
+- [x] Create `ThemeProvider` component
+- [x] Read OpenCode state from `~/.local/state/opencode/kv.json`
+- [x] Parse theme preference from OpenCode state
+- [x] Create `theme()` accessor for current theme
+- [x] Default to "opencode" theme
+- [x] Create `useTheme()` hook
 
 #### Component Updates
 - [ ] Update `src/components/header.tsx` to use theme colors
