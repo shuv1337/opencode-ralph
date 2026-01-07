@@ -516,6 +516,8 @@ async function main() {
           serverUrl: session.serverUrl,
           attached: session.attached,
         }));
+        // Store sendMessage function for steering overlay
+        stateSetters.setSendMessage(session.sendMessage);
       },
       onSessionEnded: (_sessionId) => {
         // Clear session fields when session ends
@@ -525,6 +527,8 @@ async function main() {
           serverUrl: undefined,
           attached: undefined,
         }));
+        // Clear sendMessage function
+        stateSetters.setSendMessage(null);
       },
     }, abortController.signal).catch((error) => {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });

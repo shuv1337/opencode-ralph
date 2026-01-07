@@ -5,6 +5,7 @@ import { Header } from "./components/header";
 import { Log } from "./components/log";
 import { Footer } from "./components/footer";
 import { PausedOverlay } from "./components/paused";
+import { SteeringOverlay } from "./components/steering";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { colors } from "./components/colors";
 import { calculateEta } from "./util/time";
@@ -24,6 +25,7 @@ type AppProps = {
 export type AppStateSetters = {
   setState: Setter<LoopState>;
   updateIterationTimes: (times: number[]) => void;
+  setSendMessage: (fn: ((message: string) => Promise<void>) | null) => void;
 };
 
 /**
@@ -37,6 +39,7 @@ export type StartAppResult = {
 // Module-level state setters that will be populated when App renders
 let globalSetState: Setter<LoopState> | null = null;
 let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
+let globalSendMessage: ((message: string) => Promise<void>) | null = null;
 
 
 
@@ -110,6 +113,9 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
       iterationTimesRef.length = 0;
       iterationTimesRef.push(...times);
       globalUpdateIterationTimes!(times);
+    },
+    setSendMessage: (fn) => {
+      globalSendMessage = fn;
     },
   };
 
@@ -301,6 +307,21 @@ export function App(props: AppProps) {
         linesRemoved={state().linesRemoved}
       />
       <PausedOverlay visible={state().status === "paused"} />
+      <SteeringOverlay
+        visible={commandMode()}
+        onClose={() => {
+          setCommandMode(false);
+          setCommandInput("");
+        }}
+        onSend={async (message) => {
+          if (globalSendMessage) {
+            log("app", "Sending steering message", { message });
+            await globalSendMessage(message);
+          } else {
+            log("app", "No sendMessage function available");
+          }
+        }}
+      />
     </box>
   );
 }

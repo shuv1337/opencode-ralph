@@ -31,12 +31,12 @@
 - [x] Guard `:` handler to check for active session
 
 #### Steering Overlay Component
-- [ ] Create `src/components/steering.tsx` file
-- [ ] Add modal overlay with dark background
-- [ ] Add purple-bordered input box
-- [ ] Add placeholder text: "Type message and press Enter"
-- [ ] Add ESC key handler to close overlay
-- [ ] Add Enter key handler to send message
+- [x] Create `src/components/steering.tsx` file
+- [x] Add modal overlay with dark background
+- [x] Add purple-bordered input box
+- [x] Add placeholder text: "Type message and press Enter"
+- [x] Add ESC key handler to close overlay
+- [x] Add Enter key handler to send message
 
 #### Steering Submit Logic
 - [ ] Implement `sendSteeringMessage()` function in `src/app.tsx`
