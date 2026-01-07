@@ -411,15 +411,15 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 7.1 Update config loading
 
-- [ ] **7.1.1** Open `src/index.ts`
-- [ ] **7.1.2** Locate `loadGlobalConfig()` function (lines 21-32)
-- [ ] **7.1.3** The function already returns `RalphConfig` which now includes `server` and `serverTimeout` fields
-- [ ] **7.1.4** Verify the JSON parsing will pick up these new fields automatically (it will, since it uses `as RalphConfig`)
+- [x] **7.1.1** Open `src/index.ts`
+- [x] **7.1.2** Locate `loadGlobalConfig()` function (lines 21-32)
+- [x] **7.1.3** The function already returns `RalphConfig` which now includes `server` and `serverTimeout` fields
+- [x] **7.1.4** Verify the JSON parsing will pick up these new fields automatically (it will, since it uses `as RalphConfig`)
 
 ### 7.2 Add --server CLI option
 
-- [ ] **7.2.1** Locate the yargs configuration (around line 130)
-- [ ] **7.2.2** Add the following option after the `--reset` option:
+- [x] **7.2.1** Locate the yargs configuration (around line 130)
+- [x] **7.2.2** Add the following option after the `--reset` option:
   ```typescript
   .option("server", {
     alias: "s",
@@ -428,11 +428,11 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     default: globalConfig.server,
   })
   ```
-- [ ] **7.2.3** Run `bun run typecheck` to verify no errors
+- [x] **7.2.3** Run `bun run typecheck` to verify no type errors
 
 ### 7.3 Add --server-timeout CLI option
 
-- [ ] **7.3.1** Add the following option after `--server`:
+- [x] **7.3.1** Add the following option after `--server`:
   ```typescript
   .option("server-timeout", {
     type: "number",
@@ -440,12 +440,12 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     default: globalConfig.serverTimeout ?? 5000,
   })
   ```
-- [ ] **7.3.2** Run `bun run typecheck` to verify no errors
+- [x] **7.3.2** Run `bun run typecheck` to verify no errors
 
 ### 7.4 Pass options to LoopOptions
 
-- [ ] **7.4.1** Locate the `LoopOptions` creation (around line 228)
-- [ ] **7.4.2** Update to include new fields:
+- [x] **7.4.1** Locate the `LoopOptions` creation (around line 228)
+- [x] **7.4.2** Update to include new fields:
   ```typescript
   const loopOptions: LoopOptions = {
     planFile: argv.plan,
@@ -455,8 +455,8 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     serverTimeoutMs: argv.serverTimeout,
   };
   ```
-- [ ] **7.4.3** Run `bun run typecheck` to verify no errors
-- [ ] **7.4.4** Run `bun test` to verify all tests pass
+- [x] **7.4.3** Run `bun run typecheck` to verify no errors
+- [x] **7.4.4** Run `bun test` to verify all tests pass
 
 ---
 

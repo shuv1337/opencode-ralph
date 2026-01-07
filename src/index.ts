@@ -155,6 +155,17 @@ async function main() {
       description: "Reset state and start fresh",
       default: false,
     })
+    .option("server", {
+      alias: "s",
+      type: "string",
+      description: "URL of existing OpenCode server to connect to",
+      default: globalConfig.server,
+    })
+    .option("server-timeout", {
+      type: "number",
+      description: "Health check timeout in ms for external server",
+      default: globalConfig.serverTimeout ?? 5000,
+    })
     .help()
     .alias("h", "help")
     .version(false)
@@ -231,6 +242,8 @@ async function main() {
       planFile: argv.plan,
       model: argv.model,
       prompt: argv.prompt || "",
+      serverUrl: argv.server,
+      serverTimeoutMs: argv.serverTimeout,
     };
 
 // Create abort controller for cancellation
