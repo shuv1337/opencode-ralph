@@ -1115,4 +1115,290 @@ describe("ralph flow integration", () => {
       expect(promptText).toContain("Pick ONE task");
     });
   });
+
+  describe("plan parsing with various checkbox formats", () => {
+    it("should correctly parse uppercase [X] checkboxes", async () => {
+      const uppercasePlanFile = "tests/fixtures/plans/uppercase-complete.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: uppercasePlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: uppercasePlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // uppercase-complete.md has 3 uppercase [X] completed and 1 incomplete
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(3);
+      expect(capturedTasks!.total).toBe(4);
+    });
+
+    it("should ignore checkboxes inside fenced code blocks", async () => {
+      const codeBlocksPlanFile = "tests/fixtures/plans/code-blocks.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: codeBlocksPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: codeBlocksPlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // code-blocks.md has 2 completed and 3 incomplete real tasks
+      // The checkboxes in code blocks should NOT be counted
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(2);
+      expect(capturedTasks!.total).toBe(5);
+    });
+
+    it("should handle deeply nested checkbox lists", async () => {
+      const nestedPlanFile = "tests/fixtures/plans/complex-nested.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: nestedPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: nestedPlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // complex-nested.md has checkboxes at various nesting levels:
+      // Completed (x/X): 6 total
+      // Incomplete [ ]: 7 total
+      // (Excludes checkboxes inside code blocks which are correctly ignored)
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(6);
+      expect(capturedTasks!.total).toBe(13);
+    });
+
+    it("should handle all completed tasks", async () => {
+      const allCompletePlanFile = "tests/fixtures/plans/all-complete.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: allCompletePlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: allCompletePlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // all-complete.md has 5 completed tasks
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(5);
+      expect(capturedTasks!.total).toBe(5);
+    });
+
+    it("should handle all incomplete tasks", async () => {
+      const allIncompletePlanFile = "tests/fixtures/plans/all-incomplete.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: allIncompletePlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: allIncompletePlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // all-incomplete.md has 3 incomplete tasks
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(0);
+      expect(capturedTasks!.total).toBe(3);
+    });
+
+    it("should handle empty plan file gracefully", async () => {
+      const emptyPlanFile = "tests/fixtures/plans/empty.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: emptyPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: emptyPlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // empty.md should have no tasks
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(0);
+      expect(capturedTasks!.total).toBe(0);
+    });
+
+    it("should handle mixed case checkboxes in same file", async () => {
+      const mixedPlanFile = "tests/fixtures/plans/partial-complete.md";
+      let capturedTasks: { done: number; total: number } | null = null;
+
+      const options: LoopOptions = {
+        planFile: mixedPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: mixedPlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onTasksUpdated: (done, total) => {
+          capturedTasks = { done, total };
+        },
+      };
+
+      const controller = new AbortController();
+
+      // Create .ralph-done after loop starts to allow task parsing
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // partial-complete.md has 3 completed and 7 incomplete tasks
+      expect(capturedTasks).not.toBeNull();
+      expect(capturedTasks!.done).toBe(3);
+      expect(capturedTasks!.total).toBe(10);
+    });
+  });
 });
