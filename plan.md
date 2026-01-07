@@ -242,7 +242,7 @@
 - [ ] Call `command.show()` to open palette
 
 #### App Integration
-- [ ] Wrap App with `CommandProvider` in `src/app.tsx`
+- [x] Wrap App with `CommandProvider` in `src/app.tsx`
 - [ ] Initialize default commands on mount
 
 ### 2.2 Terminal Launcher (T key)
