@@ -842,4 +842,77 @@ describe("ralph flow integration", () => {
 
     globalThis.fetch = originalFetch;
   });
+
+  it("should send steering message via sendMessage function", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(() => 
+      Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+    ) as unknown as typeof fetch;
+
+    let capturedSendMessage: ((message: string) => Promise<void>) | null = null;
+    let sessionCreatedPromiseResolve: () => void;
+    const sessionCreatedPromise = new Promise<void>((resolve) => {
+      sessionCreatedPromiseResolve = resolve;
+    });
+
+    const options: LoopOptions = {
+      planFile: testPlanFile,
+      model: "anthropic/claude-sonnet-4",
+      prompt: "Test prompt for {plan}",
+      serverUrl: "http://localhost:4190",
+      serverTimeoutMs: 1000,
+    };
+
+    const persistedState: PersistedState = {
+      startTime: Date.now(),
+      initialCommitHash: "abc123",
+      iterationTimes: [],
+      planFile: testPlanFile,
+    };
+
+    const callbacks: LoopCallbacks = {
+      ...createTestCallbacks(),
+      onSessionCreated: (session) => {
+        capturedSendMessage = session.sendMessage;
+        callbackOrder.push(`onSessionCreated:${session.sessionId}`);
+        sessionCreatedPromiseResolve();
+      },
+    };
+
+    const controller = new AbortController();
+
+    // Schedule creation of .ralph-done after we've tested sendMessage
+    cleanupFiles.push(".ralph-done");
+    
+    // Start the loop in background
+    const loopPromise = runLoop(options, persistedState, callbacks, controller.signal);
+
+    // Wait for session to be created
+    await sessionCreatedPromise;
+    
+    // Reset the mock to clear the initial prompt call
+    mockSessionPrompt.mockClear();
+    
+    // Now call sendMessage with a steering message
+    expect(capturedSendMessage).not.toBeNull();
+    await capturedSendMessage!("Focus on the task at hand");
+    
+    // Verify session.prompt was called with the steering message
+    expect(mockSessionPrompt).toHaveBeenCalledTimes(1);
+    expect(mockSessionPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      path: { id: "test-session-123" },
+      body: expect.objectContaining({
+        parts: [{ type: "text", text: "Focus on the task at hand" }],
+        model: { providerID: "anthropic", modelID: "claude-sonnet-4" },
+      }),
+    }));
+
+    // Create .ralph-done to stop the loop
+    await Bun.write(".ralph-done", "");
+    
+    // Wait for loop to complete
+    await loopPromise;
+
+    globalThis.fetch = originalFetch;
+  });
 });
