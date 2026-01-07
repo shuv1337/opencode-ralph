@@ -8,6 +8,8 @@ import { PausedOverlay } from "./components/paused";
 import { SteeringOverlay } from "./components/steering";
 import { DialogProvider, DialogStack, useDialog, useInputFocus } from "./context/DialogContext";
 import { CommandProvider, useCommand, type CommandOption } from "./context/CommandContext";
+import { ToastProvider } from "./context/ToastContext";
+import { ToastStack } from "./components/toast";
 import { DialogSelect, type SelectOption } from "./ui/DialogSelect";
 import { DialogAlert } from "./ui/DialogAlert";
 import { DialogPrompt } from "./ui/DialogPrompt";
@@ -265,30 +267,32 @@ export function App(props: AppProps) {
   };
 
   return (
-    <DialogProvider>
-      <CommandProvider onShowPalette={showCommandPalette}>
-        <AppContent
-          state={state}
-          setState={setState}
-          options={props.options}
-          commandMode={commandMode}
-          setCommandMode={setCommandMode}
-          setCommandInput={setCommandInput}
-          eta={eta}
-          elapsed={elapsed}
-          togglePause={togglePause}
-          renderer={renderer}
-          onQuit={props.onQuit}
-          onKeyboardEvent={props.onKeyboardEvent}
-          keyboardEventNotified={keyboardEventNotified}
-          setKeyboardEventNotified={(v: boolean) => { keyboardEventNotified = v; }}
-          showTasks={showTasks}
-          setShowTasks={setShowTasks}
-          tasks={tasks}
-          refreshTasks={refreshTasks}
-        />
-      </CommandProvider>
-    </DialogProvider>
+    <ToastProvider>
+      <DialogProvider>
+        <CommandProvider onShowPalette={showCommandPalette}>
+          <AppContent
+            state={state}
+            setState={setState}
+            options={props.options}
+            commandMode={commandMode}
+            setCommandMode={setCommandMode}
+            setCommandInput={setCommandInput}
+            eta={eta}
+            elapsed={elapsed}
+            togglePause={togglePause}
+            renderer={renderer}
+            onQuit={props.onQuit}
+            onKeyboardEvent={props.onKeyboardEvent}
+            keyboardEventNotified={keyboardEventNotified}
+            setKeyboardEventNotified={(v: boolean) => { keyboardEventNotified = v; }}
+            showTasks={showTasks}
+            setShowTasks={setShowTasks}
+            tasks={tasks}
+            refreshTasks={refreshTasks}
+          />
+        </CommandProvider>
+      </DialogProvider>
+    </ToastProvider>
   );
 }
 
@@ -910,6 +914,7 @@ function AppContent(props: AppContentProps) {
         </box>
       )}
       <DialogStack />
+      <ToastStack />
     </box>
   );
 }

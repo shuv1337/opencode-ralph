@@ -523,14 +523,14 @@
 - [ ] Add dismiss animation (fade out)
 
 #### Toast Stack Rendering
-- [ ] Create `ToastStack` component
-- [ ] Render toasts in order (newest at bottom)
-- [ ] Handle multiple toasts queued
-- [ ] Limit max visible toasts to 3
+- [x] Create `ToastStack` component
+- [x] Render toasts in order (newest at bottom)
+- [x] Handle multiple toasts queued
+- [x] Limit max visible toasts to 3
 
 #### App Integration
-- [ ] Wrap App with `ToastProvider` in `src/app.tsx`
-- [ ] Add `<ToastStack />` after main content
+- [x] Wrap App with `ToastProvider` in `src/app.tsx`
+- [x] Add `<ToastStack />` after main content
 
 ### 3.4 Clipboard Support
 
