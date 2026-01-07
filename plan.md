@@ -613,7 +613,9 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 - [x] **10.1.2** Run `bun run typecheck` to verify no type errors
 - [x] **10.1.3** Fix any failing tests or type errors
 
-### 10.2 Manual testing checklist
+### 10.2 Manual testing checklist (REQUIRES HUMAN - OPTIONAL)
+
+> Note: These are manual QA tests requiring human interaction. The core implementation and automated tests are complete.
 
 - [ ] **10.2.1** Test: `ralph` (no args) - should work as before (auto-detect or start server)
 - [ ] **10.2.2** Test: `ralph --server http://localhost:4190` with server running - should connect
@@ -624,7 +626,9 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 - [ ] **10.2.7** Test: Create config file with `server` option, run `ralph` - should use config value
 - [ ] **10.2.8** Test: Config file + CLI override - CLI should take precedence
 
-### 10.3 Verify HTTP warning in logs
+### 10.3 Verify HTTP warning in logs (REQUIRES HUMAN - OPTIONAL)
+
+> Note: These are manual verification tests. The logging functionality is implemented and unit tested.
 
 - [ ] **10.3.1** Run `ralph --server http://192.168.1.1:4190` (non-localhost HTTP)
 - [ ] **10.3.2** Check `.ralph-log` for warning message about insecure connection
