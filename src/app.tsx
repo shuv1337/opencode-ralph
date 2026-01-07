@@ -1,6 +1,6 @@
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
-import { createSignal, onCleanup, Setter } from "solid-js";
+import { createSignal, onCleanup, onMount, Setter } from "solid-js";
 import { Header } from "./components/header";
 import { Log } from "./components/log";
 import { Footer } from "./components/footer";
@@ -279,6 +279,24 @@ function AppContent(props: AppContentProps) {
 
   // Combined check for any input being focused
   const isInputFocused = () => props.commandMode() || dialogInputFocused();
+
+  // Register default commands on mount
+  onMount(() => {
+    // Register "Pause/Resume" command
+    command.register("togglePause", () => [
+      {
+        title: props.state().status === "paused" ? "Resume" : "Pause",
+        value: "togglePause",
+        description: props.state().status === "paused" 
+          ? "Resume the automation loop" 
+          : "Pause the automation loop",
+        keybind: keymap.togglePause.label,
+        onSelect: () => {
+          props.togglePause();
+        },
+      },
+    ]);
+  });
 
   /**
    * Detect if the `:` (colon) key was pressed.

@@ -234,7 +234,7 @@
 - [ ] Register "Copy attach command" action
 - [ ] Register "Choose default terminal" action
 - [ ] Register "Toggle tasks panel" action
-- [ ] Register "Pause/Resume" action
+- [x] Register "Pause/Resume" action
 
 #### Ctrl+P Handler
 - [x] Add Ctrl+P keyboard handler in `src/app.tsx`
