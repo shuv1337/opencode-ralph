@@ -305,12 +305,12 @@
 - [x] Save selection to config on confirm
 
 #### T Key Handler
-- [ ] Add T key handler in `src/app.tsx`
-- [ ] Check for active session before launching
-- [ ] Check for configured terminal preference
-- [ ] If configured: launch terminal directly
-- [ ] If not configured: show config dialog
-- [ ] Use external server URL when attached mode
+- [x] Add T key handler in `src/app.tsx`
+- [x] Check for active session before launching
+- [x] Check for configured terminal preference
+- [x] If configured: launch terminal directly
+- [x] If not configured: show config dialog
+- [x] Use external server URL when attached mode
 
 ### 2.4 Debug/Sandbox Mode (`-d` flag)
 

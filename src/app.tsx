@@ -10,9 +10,10 @@ import { DialogProvider, DialogStack, useDialog, useInputFocus } from "./context
 import { CommandProvider, useCommand, type CommandOption } from "./context/CommandContext";
 import { DialogSelect, type SelectOption } from "./ui/DialogSelect";
 import { DialogAlert } from "./ui/DialogAlert";
-import { keymap, matchesKeybind } from "./lib/keymap";
+import { keymap, matchesKeybind, type KeybindDef } from "./lib/keymap";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
-import { detectInstalledTerminals, type KnownTerminal } from "./lib/terminal-launcher";
+import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
+import { loadConfig, setPreferredTerminal } from "./lib/config";
 import { colors } from "./components/colors";
 import { calculateEta } from "./util/time";
 import { log } from "./util/log";
@@ -419,12 +420,13 @@ function AppContent(props: AppContentProps) {
         onSelect={(opt) => {
           const selected = terminals.find((t: KnownTerminal) => t.command === opt.value);
           if (selected) {
-            // TODO: Save to config when config persistence is implemented
-            log("app", "Terminal selected", { terminal: selected.name });
+            // Save to config
+            setPreferredTerminal(selected.name);
+            log("app", "Terminal preference saved", { terminal: selected.name });
             dialog.show(() => (
               <DialogAlert
                 title="Terminal Selected"
-                message={`Selected: ${selected.name}\n\nNote: Config persistence not yet implemented.`}
+                message={`Selected: ${selected.name}\n\nThis will be used when pressing 'T' to open a new terminal.`}
                 variant="info"
               />
             ));
@@ -434,6 +436,79 @@ function AppContent(props: AppContentProps) {
         borderColor={colors.cyan}
       />
     ));
+  };
+
+  /**
+   * Handle T key press: launch terminal with attach command or show config dialog.
+   * Requires an active session. Uses preferred terminal if configured.
+   */
+  const handleTerminalLaunch = async () => {
+    const currentState = props.state();
+    
+    // Check for active session
+    if (!currentState.sessionId) {
+      dialog.show(() => (
+        <DialogAlert
+          title="No Active Session"
+          message="Cannot launch terminal: No active session to attach to."
+          variant="warning"
+        />
+      ));
+      return;
+    }
+
+    // Load config to check for preferred terminal
+    const config = loadConfig();
+    
+    if (!config.preferredTerminal) {
+      // No configured terminal: show config dialog
+      log("app", "No preferred terminal configured, showing dialog");
+      await showTerminalConfigDialog();
+      return;
+    }
+
+    // Find the preferred terminal in detected terminals
+    const terminals = await detectInstalledTerminals();
+    const preferredTerminal = terminals.find(
+      (t: KnownTerminal) => t.name === config.preferredTerminal
+    );
+
+    if (!preferredTerminal) {
+      // Preferred terminal not found/installed
+      log("app", "Preferred terminal not found", { preferred: config.preferredTerminal });
+      dialog.show(() => (
+        <DialogAlert
+          title="Terminal Not Found"
+          message={`Preferred terminal "${config.preferredTerminal}" is not available.\n\nPlease select a different terminal.`}
+          variant="warning"
+        />
+      ));
+      await showTerminalConfigDialog();
+      return;
+    }
+
+    // Build attach command using server URL from state (supports external/attached mode)
+    const serverUrl = currentState.serverUrl || "http://localhost:10101";
+    const attachCmd = getAttachCmdFromTerminal(serverUrl, currentState.sessionId);
+
+    log("app", "Launching terminal", { 
+      terminal: preferredTerminal.name, 
+      serverUrl,
+      sessionId: currentState.sessionId,
+    });
+
+    // Launch the terminal
+    const result = await launchTerminal(preferredTerminal, attachCmd);
+
+    if (!result.success) {
+      dialog.show(() => (
+        <DialogAlert
+          title="Launch Failed"
+          message={`Failed to launch ${preferredTerminal.name}:\n\n${result.error}`}
+          variant="error"
+        />
+      ));
+    }
   };
 
   /**
@@ -518,6 +593,12 @@ function AppContent(props: AppContentProps) {
     // p key: toggle pause (only when no modifiers)
     if (key === "p" && !e.ctrl && !e.meta && !e.shift) {
       props.togglePause();
+      return;
+    }
+
+    // t key: launch terminal with attach command (only when no modifiers)
+    if (matchesKeybind(e, keymap.terminalConfig)) {
+      handleTerminalLaunch();
       return;
     }
 
