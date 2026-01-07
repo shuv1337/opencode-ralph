@@ -679,7 +679,7 @@
 
 ### Manual Testing
 - [x] Verify steering mode sends messages correctly
-- [ ] Verify custom prompt file is read
+- [x] Verify custom prompt file is read
 - [ ] Verify backoff delays work as expected
 - [ ] Verify agent flag passes through to API
 - [ ] Verify command palette shows/filters commands
