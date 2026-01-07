@@ -324,8 +324,8 @@
 
 #### Debug Mode Behavior
 - [x] Skip plan file validation when debug mode enabled
-- [ ] Skip automatic loop start in debug mode
-- [ ] Set initial state to idle in debug mode
+- [x] Skip automatic loop start in debug mode
+- [x] Set initial state to idle in debug mode
 
 #### Debug Key Handlers
 - [ ] Add N key handler for "new session" in debug mode

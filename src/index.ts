@@ -412,6 +412,21 @@ async function main() {
     }));
     log("main", "Initial stats loaded", { diff: initialDiff, commits: initialCommits });
 
+    // In debug mode, skip automatic loop start - set state to idle and wait
+    if (loopOptions.debug) {
+      log("main", "Debug mode: skipping automatic loop start, setting state to idle");
+      stateSetters.setState((prev) => ({
+        ...prev,
+        status: "idle",    // Idle status for debug mode
+        iteration: 0,      // No iteration running yet
+        isIdle: true,      // Waiting for user input
+      }));
+      // Don't start the loop - wait for user to manually create sessions
+      await exitPromise;
+      log("main", "Debug mode: exit received, cleaning up");
+      return;
+    }
+
     // Start the loop in parallel with callbacks wired to app state
     log("main", "Starting loop");
     runLoop(loopOptions, stateToUse, {

@@ -3,7 +3,7 @@ import { colors } from "./colors";
 import { formatEta } from "../util/time";
 
 export type HeaderProps = {
-  status: "starting" | "running" | "paused" | "complete" | "error";
+  status: "starting" | "running" | "paused" | "complete" | "error" | "idle";
   iteration: number;
   tasksComplete: number;
   totalTasks: number;
@@ -26,6 +26,8 @@ export function Header(props: HeaderProps) {
         return { icon: "✓", color: colors.green };
       case "error":
         return { icon: "✗", color: colors.red };
+      case "idle":
+        return { icon: "○", color: colors.cyan };
       case "starting":
       default:
         return { icon: "◌", color: colors.fgMuted };

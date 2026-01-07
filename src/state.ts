@@ -6,7 +6,7 @@ export type PersistedState = {
 };
 
 export type LoopState = {
-  status: "starting" | "running" | "paused" | "complete" | "error";
+  status: "starting" | "running" | "paused" | "complete" | "error" | "idle";
   iteration: number;
   tasksComplete: number;
   totalTasks: number;
