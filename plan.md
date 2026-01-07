@@ -352,12 +352,12 @@
 
 #### Task Parser
 - [x] Create `Task` type in `src/plan.ts` with `id`, `line`, `text`, `done` fields
-- [ ] Create `parsePlanTasks()` function (separate from `parsePlan()`)
-- [ ] Read file content line by line
-- [ ] Match checkbox pattern: `/^(\s*)-\s*\[([ xX])\]\s*(.+)$/`
-- [ ] Extract line number, done status, and text
-- [ ] Generate unique ID from line number
-- [ ] Return array of Task objects
+- [x] Create `parsePlanTasks()` function (separate from `parsePlan()`)
+- [x] Read file content line by line
+- [x] Match checkbox pattern: `/^(\s*)-\s*\[([ xX])\]\s*(.+)$/`
+- [x] Extract line number, done status, and text
+- [x] Generate unique ID from line number
+- [x] Return array of Task objects
 
 #### Tasks Component
 - [ ] Create `src/components/tasks.tsx` file
