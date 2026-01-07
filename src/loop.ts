@@ -398,6 +398,33 @@ export async function runLoop(
               timestamp: part.state.time.end,
             });
           }
+
+          // Reasoning/thought event - capture LLM text responses
+          if (part.type === "text" && part.text) {
+            // Set isIdle to false when first event arrives
+            if (!receivedFirstEvent) {
+              receivedFirstEvent = true;
+              callbacks.onIdleChanged(false);
+            }
+
+            // Truncate long reasoning text for display
+            const content = part.text;
+            const firstLine = content.split("\n")[0];
+            const truncated = firstLine.length > 80 
+              ? firstLine.slice(0, 77) + "..." 
+              : firstLine;
+
+            if (truncated.trim()) {
+              log("loop", "Reasoning", { text: truncated });
+              callbacks.onEvent({
+                iteration,
+                type: "reasoning",
+                icon: "thought",
+                text: truncated,
+                timestamp: Date.now(),
+              });
+            }
+          }
         }
 
         // Session completion detection (10.17)
