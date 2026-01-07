@@ -1402,6 +1402,154 @@ describe("ralph flow integration", () => {
     });
   });
 
+  describe("agent flag", () => {
+    it("should pass agent option to session.prompt body when specified", async () => {
+      const options: LoopOptions = {
+        planFile: testPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+        agent: "build", // Specify agent
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: testPlanFile,
+      };
+
+      const callbacks = createTestCallbacks();
+      const controller = new AbortController();
+
+      // Create .ralph-done to stop after first iteration
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // Verify session.prompt was called with agent field
+      expect(mockSessionPrompt).toHaveBeenCalled();
+      expect(mockSessionPrompt).toHaveBeenCalledWith(expect.objectContaining({
+        body: expect.objectContaining({
+          agent: "build",
+        }),
+      }));
+    });
+
+    it("should NOT include agent field when agent option is undefined", async () => {
+      const options: LoopOptions = {
+        planFile: testPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+        // agent is NOT specified
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: testPlanFile,
+      };
+
+      const callbacks = createTestCallbacks();
+      const controller = new AbortController();
+
+      // Create .ralph-done to stop after first iteration
+      cleanupFiles.push(".ralph-done");
+      setTimeout(async () => {
+        await Bun.write(".ralph-done", "");
+      }, 50);
+
+      await runLoop(options, persistedState, callbacks, controller.signal);
+
+      // Verify session.prompt was called
+      expect(mockSessionPrompt).toHaveBeenCalled();
+
+      // Get the actual call and verify agent field is NOT present
+      const calls = mockSessionPrompt.mock.calls as unknown as Array<[{ body: Record<string, unknown> }]>;
+      expect(calls.length).toBeGreaterThan(0);
+      
+      // The body should NOT have an agent field
+      expect(calls[0][0].body).not.toHaveProperty("agent");
+    });
+
+    it("should pass agent to steering messages via sendMessage", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(() => 
+        Promise.resolve(new Response(JSON.stringify({ healthy: true }), { status: 200 }))
+      ) as unknown as typeof fetch;
+
+      let capturedSendMessage: ((message: string) => Promise<void>) | null = null;
+      let sessionCreatedPromiseResolve: () => void;
+      const sessionCreatedPromise = new Promise<void>((resolve) => {
+        sessionCreatedPromiseResolve = resolve;
+      });
+
+      const options: LoopOptions = {
+        planFile: testPlanFile,
+        model: "anthropic/claude-sonnet-4",
+        prompt: "Test prompt for {plan}",
+        serverUrl: "http://localhost:4190",
+        serverTimeoutMs: 1000,
+        agent: "plan", // Specify agent for steering
+      };
+
+      const persistedState: PersistedState = {
+        startTime: Date.now(),
+        initialCommitHash: "abc123",
+        iterationTimes: [],
+        planFile: testPlanFile,
+      };
+
+      const callbacks: LoopCallbacks = {
+        ...createTestCallbacks(),
+        onSessionCreated: (session) => {
+          capturedSendMessage = session.sendMessage;
+          callbackOrder.push(`onSessionCreated:${session.sessionId}`);
+          sessionCreatedPromiseResolve();
+        },
+      };
+
+      const controller = new AbortController();
+
+      cleanupFiles.push(".ralph-done");
+      
+      // Start the loop in background
+      const loopPromise = runLoop(options, persistedState, callbacks, controller.signal);
+
+      // Wait for session to be created
+      await sessionCreatedPromise;
+      
+      // Reset the mock to clear the initial prompt call
+      mockSessionPrompt.mockClear();
+      
+      // Call sendMessage with a steering message
+      expect(capturedSendMessage).not.toBeNull();
+      await capturedSendMessage!("Focus on build tasks");
+      
+      // Verify session.prompt was called with agent field in steering message
+      expect(mockSessionPrompt).toHaveBeenCalledTimes(1);
+      expect(mockSessionPrompt).toHaveBeenCalledWith(expect.objectContaining({
+        path: { id: "test-session-123" },
+        body: expect.objectContaining({
+          parts: [{ type: "text", text: "Focus on build tasks" }],
+          model: { providerID: "anthropic", modelID: "claude-sonnet-4" },
+          agent: "plan",
+        }),
+      }));
+
+      // Create .ralph-done to stop the loop
+      await Bun.write(".ralph-done", "");
+      
+      // Wait for loop to complete
+      await loopPromise;
+
+      globalThis.fetch = originalFetch;
+    });
+  });
+
   describe("error backoff", () => {
     it("should call onBackoff and onBackoffCleared when session.error occurs", async () => {
       // Create a mock event stream that emits a session.error first, then succeeds
