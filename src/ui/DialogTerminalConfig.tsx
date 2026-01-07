@@ -2,6 +2,7 @@ import { createSignal, onMount, Show } from "solid-js";
 import { DialogSelect, SelectOption } from "./DialogSelect";
 import { DialogPrompt } from "./DialogPrompt";
 import { useDialog } from "../context/DialogContext";
+import { useTheme } from "../context/ThemeContext";
 import {
   detectInstalledTerminals,
   type KnownTerminal,
@@ -10,7 +11,6 @@ import {
   setPreferredTerminal,
   setCustomTerminalCommand,
 } from "../lib/config";
-import { colors } from "../components/colors";
 
 export interface DialogTerminalConfigProps {
   /** Callback when terminal is selected (terminal name or "custom" or "clipboard") */
@@ -33,6 +33,7 @@ export type TerminalConfigResult =
  */
 export function DialogTerminalConfig(props: DialogTerminalConfigProps) {
   const { replace } = useDialog();
+  const { theme } = useTheme();
   const [terminals, setTerminals] = createSignal<KnownTerminal[]>([]);
   const [loading, setLoading] = createSignal(true);
 
@@ -114,6 +115,8 @@ export function DialogTerminalConfig(props: DialogTerminalConfigProps) {
     }
   };
 
+  const t = theme();
+
   return (
     <Show
       when={!loading()}
@@ -123,7 +126,7 @@ export function DialogTerminalConfig(props: DialogTerminalConfigProps) {
           options={[{ title: "Detecting terminals...", value: "__loading__", disabled: true }]}
           onSelect={() => {}}
           onCancel={props.onCancel}
-          borderColor={colors.purple}
+          borderColor={t.accent}
         />
       }
     >
@@ -133,7 +136,7 @@ export function DialogTerminalConfig(props: DialogTerminalConfigProps) {
         options={buildOptions()}
         onSelect={handleSelect}
         onCancel={props.onCancel}
-        borderColor={colors.purple}
+        borderColor={t.accent}
       />
     </Show>
   );

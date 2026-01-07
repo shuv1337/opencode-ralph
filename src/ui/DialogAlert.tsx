@@ -3,7 +3,7 @@ import { TextAttributes } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
-import { colors } from "../components/colors";
+import { useTheme } from "../context/ThemeContext";
 
 export type DialogAlertProps = {
   /** Dialog title displayed at the top */
@@ -25,19 +25,21 @@ export type DialogAlertProps = {
  */
 export function DialogAlert(props: DialogAlertProps) {
   const { pop } = useDialog();
+  const { theme } = useTheme();
 
   // Get variant-specific colors
   const getVariantColor = () => {
+    const t = theme();
     switch (props.variant) {
       case "success":
-        return colors.green;
+        return t.success;
       case "warning":
-        return colors.yellow;
+        return t.warning;
       case "error":
-        return colors.red;
+        return t.error;
       case "info":
       default:
-        return colors.cyan;
+        return t.info;
     }
   };
 
@@ -62,6 +64,7 @@ export function DialogAlert(props: DialogAlertProps) {
   });
 
   const variantColor = getVariantColor();
+  const t = theme();
 
   return (
     <Dialog
@@ -80,15 +83,15 @@ export function DialogAlert(props: DialogAlertProps) {
 
       {/* Message */}
       <box marginBottom={1}>
-        <text fg={colors.fg}>{props.message}</text>
+        <text fg={t.text}>{props.message}</text>
       </box>
 
       {/* Button row */}
       <box flexDirection="row" justifyContent="flex-end">
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
+          <text fg={t.textMuted}>[</text>
           <text fg={variantColor}>Enter</text>
-          <text fg={colors.fgMuted}>] Dismiss</text>
+          <text fg={t.textMuted}>] Dismiss</text>
         </box>
       </box>
     </Dialog>

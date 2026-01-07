@@ -2,7 +2,7 @@ import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
 import type { JSX } from "solid-js";
 import { useDialog } from "../context/DialogContext";
-import { colors } from "../components/colors";
+import { useTheme } from "../context/ThemeContext";
 
 export type DialogProps = {
   /** Dialog content */
@@ -21,6 +21,7 @@ export type DialogProps = {
  */
 export function Dialog(props: DialogProps) {
   const { pop } = useDialog();
+  const { theme } = useTheme();
 
   // Handle Escape key to close dialog
   useKeyboard((e: KeyEvent) => {
@@ -32,6 +33,8 @@ export function Dialog(props: DialogProps) {
     }
   });
 
+  const t = theme();
+
   return (
     <box
       position="absolute"
@@ -39,14 +42,14 @@ export function Dialog(props: DialogProps) {
       height="100%"
       justifyContent="center"
       alignItems="center"
-      backgroundColor={colors.bgHighlight}
+      backgroundColor={t.backgroundElement}
     >
       <box
         width={props.width || "60%"}
         padding={1}
         borderStyle="single"
-        borderColor={props.borderColor || colors.border}
-        backgroundColor={colors.bgPanel}
+        borderColor={props.borderColor || t.border}
+        backgroundColor={t.backgroundPanel}
         flexDirection="column"
       >
         {props.children}

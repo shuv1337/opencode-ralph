@@ -4,7 +4,7 @@ import type { KeyEvent } from "@opentui/core";
 import { createSignal } from "solid-js";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
-import { colors } from "../components/colors";
+import { useTheme } from "../context/ThemeContext";
 
 export type DialogPromptProps = {
   /** Dialog title displayed at the top */
@@ -28,6 +28,7 @@ export type DialogPromptProps = {
  */
 export function DialogPrompt(props: DialogPromptProps) {
   const { pop } = useDialog();
+  const { theme } = useTheme();
   const [input, setInput] = createSignal(props.initialValue || "");
 
   const handleSubmit = () => {
@@ -68,15 +69,17 @@ export function DialogPrompt(props: DialogPromptProps) {
     }
   });
 
+  const t = theme();
+
   return (
     <Dialog
-      borderColor={props.borderColor || colors.cyan}
+      borderColor={props.borderColor || t.info}
       onClose={handleCancel}
       width="60%"
     >
       {/* Title */}
       <box marginBottom={1}>
-        <text fg={colors.cyan} attributes={TextAttributes.BOLD}>
+        <text fg={t.info} attributes={TextAttributes.BOLD}>
           {props.title}
         </text>
       </box>
@@ -86,10 +89,10 @@ export function DialogPrompt(props: DialogPromptProps) {
         marginBottom={1}
         padding={1}
         borderStyle="single"
-        borderColor={colors.border}
-        backgroundColor={colors.bgDark}
+        borderColor={t.border}
+        backgroundColor={t.background}
       >
-        <text fg={input() ? colors.fg : colors.fgMuted}>
+        <text fg={input() ? t.text : t.textMuted}>
           {input() || props.placeholder || "Enter text..."}
         </text>
       </box>
@@ -97,14 +100,14 @@ export function DialogPrompt(props: DialogPromptProps) {
       {/* Buttons row */}
       <box flexDirection="row" justifyContent="flex-end" gap={2}>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.green}>Enter</text>
-          <text fg={colors.fgMuted}>] Submit</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.success}>Enter</text>
+          <text fg={t.textMuted}>] Submit</text>
         </box>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.red}>Esc</text>
-          <text fg={colors.fgMuted}>] Cancel</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.error}>Esc</text>
+          <text fg={t.textMuted}>] Cancel</text>
         </box>
       </box>
     </Dialog>

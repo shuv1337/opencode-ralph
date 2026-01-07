@@ -5,7 +5,7 @@ import { createSignal, createMemo, For, Show } from "solid-js";
 import fuzzysort from "fuzzysort";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
-import { colors } from "../components/colors";
+import { useTheme } from "../context/ThemeContext";
 
 export interface SelectOption {
   /** Display title for the option */
@@ -48,6 +48,7 @@ interface HighlightedPart {
  */
 export function DialogSelect(props: DialogSelectProps) {
   const { pop } = useDialog();
+  const { theme } = useTheme();
   const [query, setQuery] = createSignal("");
   const [selectedIndex, setSelectedIndex] = createSignal(0);
 
@@ -184,16 +185,18 @@ export function DialogSelect(props: DialogSelectProps) {
     }
   });
 
+  const t = theme();
+
   return (
     <Dialog
-      borderColor={props.borderColor || colors.blue}
+      borderColor={props.borderColor || t.primary}
       onClose={handleCancel}
       width="70%"
     >
       {/* Title */}
       <Show when={props.title}>
         <box marginBottom={1}>
-          <text fg={colors.blue} attributes={TextAttributes.BOLD}>
+          <text fg={t.primary} attributes={TextAttributes.BOLD}>
             {props.title}
           </text>
         </box>
@@ -205,11 +208,11 @@ export function DialogSelect(props: DialogSelectProps) {
         paddingLeft={1}
         paddingRight={1}
         borderStyle="single"
-        borderColor={colors.border}
-        backgroundColor={colors.bgDark}
+        borderColor={t.border}
+        backgroundColor={t.background}
       >
-        <text fg={colors.fgMuted}>❯ </text>
-        <text fg={query() ? colors.fg : colors.fgMuted}>
+        <text fg={t.textMuted}>❯ </text>
+        <text fg={query() ? t.text : t.textMuted}>
           {query() || props.placeholder || "Type to search..."}
         </text>
       </box>
@@ -220,7 +223,7 @@ export function DialogSelect(props: DialogSelectProps) {
           when={filteredOptions().length > 0}
           fallback={
             <box padding={1}>
-              <text fg={colors.fgMuted}>No matching results</text>
+              <text fg={t.textMuted}>No matching results</text>
             </box>
           }
         >
@@ -234,10 +237,10 @@ export function DialogSelect(props: DialogSelectProps) {
                   flexDirection="row"
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={isSelected() ? colors.bgHighlight : undefined}
+                  backgroundColor={isSelected() ? t.backgroundElement : undefined}
                 >
                   {/* Selection indicator */}
-                  <text fg={isSelected() ? colors.blue : colors.fgMuted}>
+                  <text fg={isSelected() ? t.primary : t.textMuted}>
                     {isSelected() ? "❯ " : "  "}
                   </text>
 
@@ -248,7 +251,7 @@ export function DialogSelect(props: DialogSelectProps) {
                         when={item.highlighted}
                         fallback={
                           <text
-                            fg={item.option.disabled ? colors.fgMuted : colors.fg}
+                            fg={item.option.disabled ? t.textMuted : t.text}
                           >
                             {item.option.title}
                           </text>
@@ -259,10 +262,10 @@ export function DialogSelect(props: DialogSelectProps) {
                             <text
                               fg={
                                 part.highlighted
-                                  ? colors.yellow
+                                  ? t.warning
                                   : item.option.disabled
-                                  ? colors.fgMuted
-                                  : colors.fg
+                                  ? t.textMuted
+                                  : t.text
                               }
                               attributes={
                                 part.highlighted ? TextAttributes.BOLD : undefined
@@ -277,14 +280,14 @@ export function DialogSelect(props: DialogSelectProps) {
 
                     {/* Description if present */}
                     <Show when={item.option.description}>
-                      <text fg={colors.fgDark}>{item.option.description}</text>
+                      <text fg={t.borderSubtle}>{item.option.description}</text>
                     </Show>
                   </box>
 
                   {/* Keybind hint if present */}
                   <Show when={item.option.keybind}>
                     <box marginLeft={2}>
-                      <text fg={colors.fgDark}>[{item.option.keybind}]</text>
+                      <text fg={t.borderSubtle}>[{item.option.keybind}]</text>
                     </box>
                   </Show>
                 </box>
@@ -297,19 +300,19 @@ export function DialogSelect(props: DialogSelectProps) {
       {/* Footer hints */}
       <box flexDirection="row" justifyContent="flex-end" gap={2} marginTop={1}>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.green}>↑↓</text>
-          <text fg={colors.fgMuted}>] Navigate</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.success}>↑↓</text>
+          <text fg={t.textMuted}>] Navigate</text>
         </box>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.green}>Enter</text>
-          <text fg={colors.fgMuted}>] Select</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.success}>Enter</text>
+          <text fg={t.textMuted}>] Select</text>
         </box>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.red}>Esc</text>
-          <text fg={colors.fgMuted}>] Cancel</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.error}>Esc</text>
+          <text fg={t.textMuted}>] Cancel</text>
         </box>
       </box>
     </Dialog>

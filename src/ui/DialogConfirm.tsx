@@ -3,7 +3,7 @@ import { TextAttributes } from "@opentui/core";
 import type { KeyEvent } from "@opentui/core";
 import { Dialog } from "./Dialog";
 import { useDialog } from "../context/DialogContext";
-import { colors } from "../components/colors";
+import { useTheme } from "../context/ThemeContext";
 
 export type DialogConfirmProps = {
   /** Dialog title displayed at the top */
@@ -24,6 +24,7 @@ export type DialogConfirmProps = {
  */
 export function DialogConfirm(props: DialogConfirmProps) {
   const { pop } = useDialog();
+  const { theme } = useTheme();
 
   const handleConfirm = () => {
     props.onConfirm();
@@ -49,35 +50,37 @@ export function DialogConfirm(props: DialogConfirmProps) {
     }
   });
 
+  const t = theme();
+
   return (
     <Dialog
-      borderColor={props.borderColor || colors.yellow}
+      borderColor={props.borderColor || t.warning}
       onClose={handleCancel}
       width="50%"
     >
       {/* Title */}
       <box marginBottom={1}>
-        <text fg={colors.yellow} attributes={TextAttributes.BOLD}>
+        <text fg={t.warning} attributes={TextAttributes.BOLD}>
           {props.title}
         </text>
       </box>
 
       {/* Message */}
       <box marginBottom={1}>
-        <text fg={colors.fg}>{props.message}</text>
+        <text fg={t.text}>{props.message}</text>
       </box>
 
       {/* Buttons row */}
       <box flexDirection="row" justifyContent="flex-end" gap={2}>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.green}>Y</text>
-          <text fg={colors.fgMuted}>] Confirm</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.success}>Y</text>
+          <text fg={t.textMuted}>] Confirm</text>
         </box>
         <box flexDirection="row">
-          <text fg={colors.fgMuted}>[</text>
-          <text fg={colors.red}>N</text>
-          <text fg={colors.fgMuted}>] Cancel</text>
+          <text fg={t.textMuted}>[</text>
+          <text fg={t.error}>N</text>
+          <text fg={t.textMuted}>] Cancel</text>
         </box>
       </box>
     </Dialog>
