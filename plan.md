@@ -189,8 +189,8 @@
 - [x] Export `isInputFocused()` accessor
 
 #### App Integration
-- [ ] Wrap App content with `DialogProvider` in `src/app.tsx`
-- [ ] Add `<DialogStack />` after main content
+- [x] Wrap App content with `DialogProvider` in `src/app.tsx`
+- [x] Add `<DialogStack />` after main content
 
 ### 2.1 Command Palette (Ctrl+P)
 

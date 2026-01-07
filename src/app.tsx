@@ -6,6 +6,7 @@ import { Log } from "./components/log";
 import { Footer } from "./components/footer";
 import { PausedOverlay } from "./components/paused";
 import { SteeringOverlay } from "./components/steering";
+import { DialogProvider, DialogStack } from "./context/DialogContext";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { colors } from "./components/colors";
 import { calculateEta } from "./util/time";
@@ -285,44 +286,47 @@ export function App(props: AppProps) {
   });
 
   return (
-    <box
-      flexDirection="column"
-      width="100%"
-      height="100%"
-      backgroundColor={colors.bgDark}
-    >
-      <Header
-        status={state().status}
-        iteration={state().iteration}
-        tasksComplete={state().tasksComplete}
-        totalTasks={state().totalTasks}
-        eta={eta()}
-      />
-      <Log events={state().events} isIdle={state().isIdle} errorRetryAt={state().errorRetryAt} />
-      <Footer
-        commits={state().commits}
-        elapsed={elapsed()}
-        paused={state().status === "paused"}
-        linesAdded={state().linesAdded}
-        linesRemoved={state().linesRemoved}
-        sessionActive={!!state().sessionId}
-      />
-      <PausedOverlay visible={state().status === "paused"} />
-      <SteeringOverlay
-        visible={commandMode()}
-        onClose={() => {
-          setCommandMode(false);
-          setCommandInput("");
-        }}
-        onSend={async (message) => {
-          if (globalSendMessage) {
-            log("app", "Sending steering message", { message });
-            await globalSendMessage(message);
-          } else {
-            log("app", "No sendMessage function available");
-          }
-        }}
-      />
-    </box>
+    <DialogProvider>
+      <box
+        flexDirection="column"
+        width="100%"
+        height="100%"
+        backgroundColor={colors.bgDark}
+      >
+        <Header
+          status={state().status}
+          iteration={state().iteration}
+          tasksComplete={state().tasksComplete}
+          totalTasks={state().totalTasks}
+          eta={eta()}
+        />
+        <Log events={state().events} isIdle={state().isIdle} errorRetryAt={state().errorRetryAt} />
+        <Footer
+          commits={state().commits}
+          elapsed={elapsed()}
+          paused={state().status === "paused"}
+          linesAdded={state().linesAdded}
+          linesRemoved={state().linesRemoved}
+          sessionActive={!!state().sessionId}
+        />
+        <PausedOverlay visible={state().status === "paused"} />
+        <SteeringOverlay
+          visible={commandMode()}
+          onClose={() => {
+            setCommandMode(false);
+            setCommandInput("");
+          }}
+          onSend={async (message) => {
+            if (globalSendMessage) {
+              log("app", "Sending steering message", { message });
+              await globalSendMessage(message);
+            } else {
+              log("app", "No sendMessage function available");
+            }
+          }}
+        />
+        <DialogStack />
+      </box>
+    </DialogProvider>
   );
 }
