@@ -280,6 +280,8 @@ export type LoopCallbacks = {
   onIdleChanged: (isIdle: boolean) => void;
   onSessionCreated?: (session: SessionInfo) => void;
   onSessionEnded?: (sessionId: string) => void;
+  onBackoff?: (backoffMs: number, retryAt: number) => void;
+  onBackoffCleared?: () => void;
 };
 
 export async function runLoop(
@@ -354,8 +356,11 @@ export async function runLoop(
       // Apply error backoff before iteration starts
       if (errorCount > 0) {
         const backoffMs = calculateBackoffMs(errorCount);
-        log("loop", "Error backoff", { errorCount, backoffMs });
+        const retryAt = Date.now() + backoffMs;
+        log("loop", "Error backoff", { errorCount, backoffMs, retryAt });
+        callbacks.onBackoff?.(backoffMs, retryAt);
         await Bun.sleep(backoffMs);
+        callbacks.onBackoffCleared?.();
       }
 
       // Iteration start (10.11)

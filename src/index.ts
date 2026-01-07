@@ -537,6 +537,22 @@ async function main() {
         // Clear sendMessage function
         stateSetters.setSendMessage(null);
       },
+      onBackoff: (backoffMs, retryAt) => {
+        // Update state with backoff info for retry countdown display
+        stateSetters.setState((prev) => ({
+          ...prev,
+          errorBackoffMs: backoffMs,
+          errorRetryAt: retryAt,
+        }));
+      },
+      onBackoffCleared: () => {
+        // Clear backoff fields when retry begins
+        stateSetters.setState((prev) => ({
+          ...prev,
+          errorBackoffMs: undefined,
+          errorRetryAt: undefined,
+        }));
+      },
     }, abortController.signal).catch((error) => {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);

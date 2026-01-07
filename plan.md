@@ -108,7 +108,7 @@
 
 #### Error Display in TUI
 - [x] Add `errorBackoffMs` field to `LoopState` in `src/state.ts`
-- [ ] Add `errorRetryAt` field to `LoopState` (timestamp for countdown)
+- [x] Add `errorRetryAt` field to `LoopState` (timestamp for countdown)
 - [ ] Update TUI to show retry countdown when backoff active
 - [ ] Format countdown as "Retrying in Xs..." in log component
 

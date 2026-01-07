@@ -22,6 +22,7 @@ export type LoopState = {
   attached?: boolean;
   // Error backoff fields for retry countdown display
   errorBackoffMs?: number; // Current backoff delay in milliseconds (undefined when no backoff active)
+  errorRetryAt?: number; // Timestamp (epoch ms) when next retry will occur (undefined when no backoff active)
 };
 
 export type ToolEvent = {
