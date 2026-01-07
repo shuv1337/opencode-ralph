@@ -429,7 +429,7 @@
 - [x] Copy `rosepine.json` theme file
 - [x] Copy `solarized.json` theme file
 - [x] Copy `synthwave84.json` theme file
-- [ ] Copy `tokyonight.json` theme file
+- [x] Copy `tokyonight.json` theme file
 - [ ] Copy `vercel.json` theme file
 - [ ] Copy `vesper.json` theme file
 - [ ] Copy `zenburn.json` theme file
