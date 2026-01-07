@@ -32,7 +32,7 @@ export function Footer(props: FooterProps) {
     >
       {/* Keybind hints (left side) */}
       <text fg={t.textMuted}>
-        <span style={{ fg: t.borderSubtle }}>q</span> quit  <span style={{ fg: t.borderSubtle }}>p</span> {props.paused ? "resume" : "pause"}  <span style={{ fg: t.borderSubtle }}>T</span> tasks{props.sessionActive && (<>  <span style={{ fg: t.borderSubtle }}>:</span> steer</>)}
+        <span style={{ fg: t.borderSubtle }}>q</span> quit  <span style={{ fg: t.borderSubtle }}>p</span> {props.paused ? "resume" : "pause"}  <span style={{ fg: t.borderSubtle }}>T</span> tasks  <span style={{ fg: t.accent }}>c</span> cmds{props.sessionActive && (<>  <span style={{ fg: t.borderSubtle }}>:</span> steer</>)}
       </text>
 
       {/* Spacer */}

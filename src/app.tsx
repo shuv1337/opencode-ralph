@@ -834,9 +834,21 @@ function AppContent(props: AppContentProps) {
   // Keyboard handling - now inside context providers
   useKeyboard((e: KeyEvent) => {
     // Notify caller that OpenTUI keyboard handling is working
+    // Also log the first key event for diagnostic purposes (Phase 1.1)
     if (!props.keyboardEventNotified && props.onKeyboardEvent) {
       props.setKeyboardEventNotified(true);
       props.onKeyboardEvent();
+      // Log first key event to diagnose keyboard issues
+      log("keyboard", "First OpenTUI key event received", {
+        key: e.name,
+        ctrl: e.ctrl,
+        shift: e.shift,
+        meta: e.meta,
+        raw: e.raw,
+        isInputFocused: isInputFocused(),
+        commandMode: props.commandMode(),
+        dialogInputFocused: dialogInputFocused(),
+      });
     }
 
     // Skip if any input is focused (dialogs, steering mode, etc.)
@@ -851,9 +863,9 @@ function AppContent(props: AppContentProps) {
       return;
     }
 
-    // Ctrl+P: open command palette
+    // c: open command palette
     if (matchesKeybind(e, keymap.commandPalette)) {
-      log("app", "Command palette opened via Ctrl+P");
+      log("app", "Command palette opened via 'c' key");
       showCommandPalette();
       return;
     }
@@ -871,7 +883,8 @@ function AppContent(props: AppContentProps) {
     }
 
     // p key: toggle pause OR prompt input (debug mode)
-    if (key === "p" && !e.ctrl && !e.meta && !e.shift) {
+    // Phase 2.2: Use matchesKeybind for consistent key routing
+    if (matchesKeybind(e, keymap.togglePause)) {
       if (props.options.debug) {
         // In debug mode, p opens prompt input dialog
         handleDebugPromptInput();
@@ -904,7 +917,8 @@ function AppContent(props: AppContentProps) {
     }
 
     // q key: quit
-    if (key === "q" && !e.ctrl && !e.meta) {
+    // Phase 2.2: Use matchesKeybind for consistent key routing
+    if (matchesKeybind(e, keymap.quit)) {
       log("app", "Quit requested via 'q' key");
       props.renderer.setTerminalTitle("");
       props.renderer.destroy();

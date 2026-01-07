@@ -188,7 +188,7 @@ async function main() {
     })
     .help()
     .alias("h", "help")
-    .version(false)
+    .version("1.0.0")
     .strict()
     .parse();
 
@@ -278,12 +278,23 @@ async function main() {
 
     // Task 4.3: Declare fallback timeout variable early so cleanup() can reference it
     let fallbackTimeout: ReturnType<typeof setTimeout> | undefined;
+    // Phase 3.3: Declare fallback raw mode flag early so cleanup() can reference it
+    let fallbackRawModeEnabled = false;
 
     // Cleanup function for graceful shutdown
     async function cleanup() {
       log("main", "cleanup() called");
       clearInterval(keepaliveInterval);
       if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
+      // Phase 3.3: Restore raw mode if fallback enabled it
+      if (fallbackRawModeEnabled && process.stdin.isTTY) {
+        try {
+          process.stdin.setRawMode(false);
+          log("main", "Raw mode restored to normal during cleanup");
+        } catch {
+          // Ignore errors - stdin may already be closed
+        }
+      }
       abortController.abort();
       await releaseLock();
       log("main", "cleanup() done");
@@ -308,15 +319,38 @@ async function main() {
     // 1. No keyboard events received from OpenTUI after startup
     // 2. A timeout has elapsed (indicating OpenTUI may not be working)
     //
-    // Once OpenTUI keyboard events ARE received, the fallback is permanently disabled.
+    // Once OpenTUI keyboard events ARE received, the fallback is permanently disabled
+    // AND the stdin listener is removed to prevent any double-handling.
     let keyboardWorking = false;
     let fallbackEnabled = false;
+    let fallbackFirstKeyLogged = false; // Phase 1.2: Only log first fallback key to avoid spam
+    let fallbackStdinHandler: ((data: Buffer) => Promise<void>) | null = null;
     const KEYBOARD_FALLBACK_TIMEOUT_MS = 5000; // 5 seconds before enabling fallback
     
+    /**
+     * Permanently disable the fallback stdin handler.
+     * Called when OpenTUI keyboard is confirmed working.
+     */
+    const disableFallbackHandler = () => {
+      if (fallbackStdinHandler && fallbackEnabled) {
+        process.stdin.off("data", fallbackStdinHandler);
+        fallbackStdinHandler = null;
+        fallbackEnabled = false;
+        // Phase 3.3: Restore raw mode if we enabled it
+        if (fallbackRawModeEnabled && process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+          fallbackRawModeEnabled = false;
+          log("main", "Raw mode restored to normal");
+        }
+        log("main", "Fallback stdin handler removed - OpenTUI has exclusive keyboard control");
+      }
+    };
+    
     const onKeyboardEvent = () => {
-      // OpenTUI keyboard is working - disable any fallback
+      // OpenTUI keyboard is working - disable any fallback permanently
       keyboardWorking = true;
-      log("main", "OpenTUI keyboard confirmed working, fallback disabled");
+      log("main", "OpenTUI keyboard confirmed working, disabling fallback");
+      disableFallbackHandler();
     };
     
     // Set up a delayed fallback that only activates if keyboard isn't working
@@ -328,22 +362,31 @@ async function main() {
       
       // OpenTUI keyboard may not be working - enable fallback stdin handler
       fallbackEnabled = true;
-      log("main", "Enabling fallback stdin handler (OpenTUI keyboard not detected)");
+      log("main", "Enabling fallback stdin handler (OpenTUI keyboard not detected after 5s)");
       
       // Set stdin to raw mode for single-keypress detection
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(true);
+        fallbackRawModeEnabled = true; // Phase 3.3: Track raw mode for cleanup
       }
       process.stdin.resume();
       
-      process.stdin.on("data", async (data: Buffer) => {
-        // If OpenTUI keyboard started working, ignore fallback
+      // Create and store the handler so we can remove it later
+      fallbackStdinHandler = async (data: Buffer) => {
+        // If OpenTUI keyboard started working, ignore this event
+        // (handler will be removed shortly by disableFallbackHandler)
         if (keyboardWorking) {
           return;
         }
         
         const char = data.toString();
-        log("main", "Fallback stdin received", { char: char.replace(/\x03/g, "^C") });
+        // Phase 1.2: Only log first fallback key to avoid spam
+        if (!fallbackFirstKeyLogged) {
+          fallbackFirstKeyLogged = true;
+          log("main", "First fallback stdin key event", { 
+            char: char.replace(/\x03/g, "^C"),
+          });
+        }
         
         // Handle 'q' for quit
         if (char === "q" || char === "Q") {
@@ -366,22 +409,30 @@ async function main() {
             await Bun.write(PAUSE_FILE, String(process.pid));
           }
         }
-      });
+      };
+      
+      process.stdin.on("data", fallbackStdinHandler);
     }, KEYBOARD_FALLBACK_TIMEOUT_MS);
 
     // Handle SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
+    // NOTE: When stdin is in raw mode, Ctrl+C sends 0x03 character instead of SIGINT.
+    // SIGINT will still fire if something else sends the signal (e.g., kill -INT).
     process.on("SIGINT", async () => {
+      if (quitRequested) {
+        log("main", "SIGINT received but quit already requested, ignoring");
+        return;
+      }
       log("main", "SIGINT received");
-      await cleanup();
-      log("main", "SIGINT cleanup done, exiting");
-      process.exit(0);
+      await requestQuit("SIGINT");
     });
 
     process.on("SIGTERM", async () => {
+      if (quitRequested) {
+        log("main", "SIGTERM received but quit already requested, ignoring");
+        return;
+      }
       log("main", "SIGTERM received");
-      await cleanup();
-      log("main", "SIGTERM cleanup done, exiting");
-      process.exit(0);
+      await requestQuit("SIGTERM");
     });
 
 // Start the TUI app and get state setters
@@ -427,8 +478,18 @@ async function main() {
       return;
     }
 
+    // Start paused - create pause file and set initial state to paused
+    // User must press 'p' to begin the loop
+    const PAUSE_FILE = ".ralph-pause";
+    await Bun.write(PAUSE_FILE, String(process.pid));
+    stateSetters.setState((prev) => ({
+      ...prev,
+      status: "paused",
+    }));
+    log("main", "Starting in paused state - press 'p' to begin");
+
     // Start the loop in parallel with callbacks wired to app state
-    log("main", "Starting loop");
+    log("main", "Starting loop (paused)");
     runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
         log("main", "onIterationStart", { iteration });

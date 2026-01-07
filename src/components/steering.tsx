@@ -1,7 +1,8 @@
 import { useKeyboard } from "@opentui/solid";
 import type { KeyEvent } from "@opentui/core";
-import { createSignal } from "solid-js";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
+import { useInputFocus } from "../context/DialogContext";
 
 export type SteeringOverlayProps = {
   visible: boolean;
@@ -12,11 +13,44 @@ export type SteeringOverlayProps = {
 /**
  * Steering mode overlay for sending messages to the active session.
  * Opens with `:` key, closes with ESC, sends with Enter.
+ * 
+ * IMPORTANT: Uses useInputFocus() to claim input focus when visible,
+ * preventing App-level handlers from processing keys while steering is active.
  */
 export function SteeringOverlay(props: SteeringOverlayProps) {
   const [input, setInput] = createSignal("");
   const { theme } = useTheme();
   const t = theme();
+  const { setInputFocused } = useInputFocus();
+
+  // Claim/release input focus when visibility changes
+  // This ensures App-level keyboard handler skips events while steering is open
+  // Phase 2.1: Properly claim and release focus on visibility changes
+  createEffect(() => {
+    if (props.visible) {
+      setInputFocused(true);
+    } else {
+      // Release focus when visibility changes to false (handles external close)
+      setInputFocused(false);
+    }
+  });
+
+  // Release focus on cleanup (component unmount)
+  onCleanup(() => {
+    // Always release focus on unmount if we were claiming it
+    if (props.visible) {
+      setInputFocused(false);
+    }
+  });
+
+  /**
+   * Close the overlay and release input focus.
+   */
+  const closeOverlay = () => {
+    setInputFocused(false);
+    setInput("");
+    props.onClose();
+  };
 
   // Handle keyboard events for the steering input
   useKeyboard((e: KeyEvent) => {
@@ -24,7 +58,7 @@ export function SteeringOverlay(props: SteeringOverlayProps) {
 
     // ESC: close overlay
     if (e.name === "escape" || e.name === "Escape") {
-      props.onClose();
+      closeOverlay();
       return;
     }
 
@@ -33,9 +67,8 @@ export function SteeringOverlay(props: SteeringOverlayProps) {
       const message = input().trim();
       if (message) {
         props.onSend(message);
-        setInput("");
       }
-      props.onClose();
+      closeOverlay();
       return;
     }
 

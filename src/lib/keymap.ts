@@ -64,9 +64,8 @@ export const keymap = {
 
   /** Open command palette */
   commandPalette: {
-    key: "p",
-    ctrl: true,
-    label: "Ctrl+P",
+    key: "c",
+    label: "C",
   } as KeybindDef,
 } as const;
 
