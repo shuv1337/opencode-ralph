@@ -8,6 +8,7 @@ export type HeaderProps = {
   tasksComplete: number;
   totalTasks: number;
   eta: number | null;
+  debug?: boolean;
 };
 
 /**
@@ -55,6 +56,14 @@ export function Header(props: HeaderProps) {
       paddingRight={1}
       backgroundColor={colors.bgPanel}
     >
+      {/* Debug mode badge */}
+      {props.debug && (
+        <>
+          <text fg={colors.yellow}>[DEBUG]</text>
+          <text fg={colors.fgDark}>{" "}</text>
+        </>
+      )}
+
       {/* Status indicator */}
       <text fg={statusDisplay.color}>{statusDisplay.icon}</text>
       <text fg={colors.fg}> {props.status}</text>

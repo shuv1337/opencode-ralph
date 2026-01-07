@@ -330,23 +330,23 @@
 #### Debug Key Handlers
 - [x] Add N key handler for "new session" in debug mode
 - [x] Add P key handler for "prompt input" in debug mode
-- [ ] Add Q key handler for quit (shared with normal mode)
+- [x] Add Q key handler for quit (shared with normal mode)
 
 #### Debug Session Creation
-- [ ] Implement `createDebugSession()` function
-- [ ] Call `client.session.create({})` to create session
-- [ ] Store session ID in state
-- [ ] Log session creation event
+- [x] Implement `createDebugSession()` function
+- [x] Call `client.session.create({})` to create session
+- [x] Store session ID in state
+- [x] Log session creation event
 
 #### Debug Prompt Dialog
-- [ ] Use DialogPrompt for manual prompt input
-- [ ] Send prompt via `client.session.prompt()`
-- [ ] Log prompt send event
+- [x] Use DialogPrompt for manual prompt input
+- [x] Send prompt via `client.session.prompt()`
+- [x] Log prompt send event
 
 #### Debug Mode Indicator
-- [ ] Add debug mode indicator in header component
-- [ ] Show "[DEBUG]" badge when debug mode active
-- [ ] Style with distinct color (yellow/orange)
+- [x] Add debug mode indicator in header component
+- [x] Show "[DEBUG]" badge when debug mode active
+- [x] Style with distinct color (yellow/orange)
 
 ### 2.5 Tasks Panel
 

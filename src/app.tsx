@@ -797,6 +797,7 @@ function AppContent(props: AppContentProps) {
         tasksComplete={props.state().tasksComplete}
         totalTasks={props.state().totalTasks}
         eta={props.eta()}
+        debug={props.options.debug}
       />
       <Log events={props.state().events} isIdle={props.state().isIdle} errorRetryAt={props.state().errorRetryAt} />
       <Footer
