@@ -431,8 +431,8 @@
 - [x] Copy `synthwave84.json` theme file
 - [x] Copy `tokyonight.json` theme file
 - [x] Copy `vercel.json` theme file
-- [ ] Copy `vesper.json` theme file
-- [ ] Copy `zenburn.json` theme file
+- [x] Copy `vesper.json` theme file
+- [x] Copy `zenburn.json` theme file
 
 #### Theme Index
 - [ ] Create `src/lib/themes/index.ts` file
