@@ -68,7 +68,7 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 2.2 Create isLocalhost helper function
 
-- [ ] **2.2.1** Add the following function after `validateAndNormalizeServerUrl`:
+- [x] **2.2.1** Add the following function after `validateAndNormalizeServerUrl`:
   ```typescript
   /**
    * Check if a URL points to localhost.
@@ -80,7 +80,7 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
            parsed.hostname === "::1";
   }
   ```
-- [ ] **2.2.2** Run `bun run typecheck` to verify no errors
+- [x] **2.2.2** Run `bun run typecheck` to verify no errors
 
 ### 2.3 Write unit tests for URL validation
 

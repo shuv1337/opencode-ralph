@@ -34,6 +34,16 @@ export function validateAndNormalizeServerUrl(url: string): string {
 }
 
 /**
+ * Check if a URL points to localhost.
+ */
+export function isLocalhost(url: string): boolean {
+  const parsed = new URL(url);
+  return parsed.hostname === "localhost" || 
+         parsed.hostname === "127.0.0.1" || 
+         parsed.hostname === "::1";
+}
+
+/**
  * Check if an opencode server is already running at the given URL.
  * Uses the /global/health endpoint.
  */
