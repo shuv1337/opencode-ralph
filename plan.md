@@ -403,7 +403,7 @@
 - [x] Create `src/lib/themes/` directory
 - [x] Copy `aura.json` theme file
 - [x] Copy `ayu.json` theme file
-- [ ] Copy `catppuccin-frappe.json` theme file
+- [x] Copy `catppuccin-frappe.json` theme file
 - [ ] Copy `catppuccin-latte.json` theme file
 - [ ] Copy `catppuccin-mocha.json` theme file
 - [ ] Copy `cobalt2.json` theme file
