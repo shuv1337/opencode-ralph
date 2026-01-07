@@ -195,7 +195,7 @@
 ### 2.1 Command Palette (Ctrl+P)
 
 #### Dependencies
-- [ ] Install `fuzzysort` package: `bun add fuzzysort`
+- [x] Install `fuzzysort` package: `bun add fuzzysort`
 
 #### Context Provider
 - [ ] Create `src/context/CommandContext.tsx` file
