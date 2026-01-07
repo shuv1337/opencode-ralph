@@ -243,7 +243,12 @@ export async function runLoop(
   try {
     // Get or create opencode server (attach if already running)
     log("loop", "Creating opencode server...");
-    server = await getOrCreateOpencodeServer({ signal, port: DEFAULT_PORT });
+    server = await getOrCreateOpencodeServer({ 
+      signal, 
+      port: DEFAULT_PORT,
+      serverUrl: options.serverUrl,
+      serverTimeoutMs: options.serverTimeoutMs,
+    });
     log("loop", "Server ready", { url: server.url, attached: server.attached });
     
     const client = createOpencodeClient({ baseUrl: server.url, fetch: createTimeoutlessFetch() } as any);

@@ -391,9 +391,9 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
 
 ### 6.1 Update runLoop server acquisition
 
-- [ ] **6.1.1** Open `src/loop.ts`
-- [ ] **6.1.2** Locate the call to `getOrCreateOpencodeServer` in `runLoop` (around line 120)
-- [ ] **6.1.3** Update the call to pass the new options:
+- [x] **6.1.1** Open `src/loop.ts`
+- [x] **6.1.2** Locate the call to `getOrCreateOpencodeServer` in `runLoop` (around line 120)
+- [x] **6.1.3** Update the call to pass the new options:
   ```typescript
   server = await getOrCreateOpencodeServer({ 
     signal, 
@@ -402,8 +402,8 @@ Allow Ralph to connect to an existing/running OpenCode server via `--server` URL
     serverTimeoutMs: options.serverTimeoutMs,
   });
   ```
-- [ ] **6.1.4** Run `bun run typecheck` to verify no errors
-- [ ] **6.1.5** Run `bun test` to verify all tests pass
+- [x] **6.1.4** Run `bun run typecheck` to verify no errors
+- [x] **6.1.5** Run `bun test` to verify all tests pass
 
 ---
 
