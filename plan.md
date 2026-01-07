@@ -414,7 +414,7 @@
 - [x] Copy `github.json` theme file
 - [x] Copy `gruvbox.json` theme file
 - [x] Copy `kanagawa.json` theme file
-- [ ] Copy `lucent-orng.json` theme file
+- [x] Copy `lucent-orng.json` theme file
 - [ ] Copy `material.json` theme file
 - [ ] Copy `matrix.json` theme file
 - [ ] Copy `mercury.json` theme file
