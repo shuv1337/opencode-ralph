@@ -298,11 +298,11 @@
 - [x] Add `customTerminalCommand` field to config
 
 #### Terminal Config Dialog
-- [ ] Create terminal selection dialog component
-- [ ] List detected terminals as options
-- [ ] Add "Custom command..." option
-- [ ] Add "Copy to clipboard" option
-- [ ] Save selection to config on confirm
+- [x] Create terminal selection dialog component
+- [x] List detected terminals as options
+- [x] Add "Custom command..." option
+- [x] Add "Copy to clipboard" option
+- [x] Save selection to config on confirm
 
 #### T Key Handler
 - [ ] Add T key handler in `src/app.tsx`
