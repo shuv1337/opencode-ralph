@@ -25,12 +25,12 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const DEFAULT_ICON = "⚙"; // ⚙
 
 /**
- * Generates a stable key for an event item.
- * Uses iteration number and timestamp for uniqueness.
- * This ensures consistent identity across re-renders.
+ * Generates a stable key for an event item based on array index.
+ * Index-based keys are more stable for arrays where events are removed/modified.
+ * This helps SolidJS and scrollbox track items more reliably during updates.
  */
-export function getEventKey(event: ToolEvent): string {
-  return `${event.iteration}-${event.timestamp}`;
+export function getEventKey(event: ToolEvent, index: number): string {
+  return `event-${index}`;
 }
 
 /**
@@ -284,7 +284,7 @@ export function Log(props: LogProps) {
       }}
     >
       <For each={props.events}>
-        {(event) => (
+        {(event, index) => (
           <Switch>
             <Match when={event.type === "spinner"}>
               <Spinner isIdle={props.isIdle} theme={t()} />
