@@ -715,11 +715,14 @@ async function main() {
     runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
         log("main", "onIterationStart", { iteration });
-        stateSetters.setState((prev) => ({
+        // Use batchedUpdater with flushNow to ensure render happens immediately
+        // and clears any previous pending batches
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "running",
           iteration,
         }));
+        batchedUpdater.flushNow();
       },
       onEvent: (event) => {
         // Debounce event updates to batch rapid events within 50ms window
@@ -758,7 +761,8 @@ async function main() {
       },
       onIterationComplete: (iteration, duration, commits) => {
         // Mutate the separator event in-place and remove spinner
-        stateSetters.setState((prev) => {
+        // Use batchedUpdater to mutate events in sync with other updates
+        batchedUpdater.queueUpdate((prev) => {
           for (const event of prev.events) {
             if (event.type === "separator" && event.iteration === iteration) {
               event.duration = duration;
@@ -773,9 +777,11 @@ async function main() {
           if (spinnerIndex !== -1) {
             prev.events.splice(spinnerIndex, 1);
           }
-          // Return same events array reference - mutation is sufficient to trigger re-render
-          return { ...prev };
+          // Return updated events object to trigger state update
+          return { events: prev.events };
         });
+        batchedUpdater.flushNow();
+
         // Update persisted state with the new iteration time
         stateToUse.iterationTimes.push(duration);
         saveState(stateToUse);
