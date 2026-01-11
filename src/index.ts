@@ -156,13 +156,23 @@ function createBatchStateUpdater(
     }
 
     // Apply all pending updates in a single setState call
-    setState((prev) => {
-      let current = prev;
-      for (const update of updates) {
-        current = { ...current, ...update(current) };
-      }
-      return current;
-    });
+    try {
+      setState((prev) => {
+        let current = prev;
+        for (const update of updates) {
+          try {
+            current = { ...current, ...update(current) };
+          } catch (err) {
+            console.error("Error applying state update:", err);
+            log("batcher", "Error applying update", { error: String(err) });
+          }
+        }
+        return current;
+      });
+    } catch (err) {
+      console.error("Error in batched setState:", err);
+      log("batcher", "Error in setState", { error: String(err) });
+    }
   }
 
   return {
@@ -726,27 +736,35 @@ async function main() {
       },
       onEvent: (event) => {
         // Debounce event updates to batch rapid events within 50ms window
-        // Mutate existing array in-place to avoid allocations
         batchedUpdater.queueUpdate((prev) => {
+          // Clone events array to ensure immutability and trigger proper reactivity
+          const nextEvents = [...prev.events];
+          const MAX_EVENTS = 200; // Hardcoded from state.ts to avoid circular deps or complex imports
+
           // For tool events, ensure spinner stays at the end of the array
           if (event.type === "tool") {
             // Find and remove spinner temporarily
-            const spinnerIndex = prev.events.findIndex((e) => e.type === "spinner");
+            const spinnerIndex = nextEvents.findIndex((e) => e.type === "spinner");
             let spinner: typeof event | undefined;
             if (spinnerIndex !== -1) {
-              spinner = prev.events.splice(spinnerIndex, 1)[0];
+              spinner = nextEvents.splice(spinnerIndex, 1)[0];
             }
             // Add the tool event
-            prev.events.push(event);
+            nextEvents.push(event);
             // Re-add spinner at the end
             if (spinner) {
-              prev.events.push(spinner);
+              nextEvents.push(spinner);
             }
           } else {
-            prev.events.push(event);
+            nextEvents.push(event);
           }
-          trimEventsInPlace(prev.events);
-          return { events: prev.events };
+          
+          // Trim events manually since we cloned the array
+          if (nextEvents.length > MAX_EVENTS) {
+             nextEvents.splice(0, nextEvents.length - MAX_EVENTS);
+          }
+          
+          return { events: nextEvents };
         });
       },
       onRawOutput: (data) => {
@@ -760,25 +778,31 @@ async function main() {
         });
       },
       onIterationComplete: (iteration, duration, commits) => {
-        // Mutate the separator event in-place and remove spinner
+        // Update the separator event and remove spinner
         // Use batchedUpdater to mutate events in sync with other updates
         batchedUpdater.queueUpdate((prev) => {
-          for (const event of prev.events) {
+          // Clone events array for immutability
+          const nextEvents = [...prev.events];
+
+          for (let i = 0; i < nextEvents.length; i++) {
+            const event = nextEvents[i];
             if (event.type === "separator" && event.iteration === iteration) {
-              event.duration = duration;
-              event.commitCount = commits;
+              // REPLACE the event object with a new copy to ensure reactivity detects the change
+              nextEvents[i] = { ...event, duration, commitCount: commits };
               break;
             }
           }
+
           // Remove spinner event for this iteration
-          const spinnerIndex = prev.events.findIndex(
+          const spinnerIndex = nextEvents.findIndex(
             (e) => e.type === "spinner" && e.iteration === iteration
           );
           if (spinnerIndex !== -1) {
-            prev.events.splice(spinnerIndex, 1);
+            nextEvents.splice(spinnerIndex, 1);
           }
-          // Return updated events object to trigger state update
-          return { events: prev.events };
+          
+          // Return updated events array
+          return { events: nextEvents };
         });
         batchedUpdater.flushNow();
 
