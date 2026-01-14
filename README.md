@@ -2,7 +2,17 @@
 
 AI agent loop for autonomous task execution. Reads a PRD, picks one task, completes it, commits, repeats.
 
-<img width="1714" height="1076" alt="image" src="https://github.com/user-attachments/assets/3dd85500-0164-44cd-8917-dfcbe787c09f" />
+<p align="center">
+  <img src="ralph-task.jpg" alt="Ralph TUI - Task view with PRD items" width="100%" />
+</p>
+
+<p align="center">
+  <img src="ralph-output details.jpg" alt="Ralph TUI - Output view showing agent activity" width="100%" />
+</p>
+
+<p align="center">
+  <img src="ralph-opencode-terminal.jpg" alt="Ralph with OpenCode terminal side-by-side" width="100%" />
+</p>
 
 ## Quick Start
 
@@ -64,11 +74,13 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--plan, -p` | `prd.json` | PRD file path |
 | `--progress` | `progress.txt` | Progress log path |
 | `--model, -m` | `opencode/claude-opus-4-5` | Model (provider/model format) |
+| `--adapter` | `opencode-server` | Adapter (opencode-server, opencode-run, codex) |
 | `--prompt` | see below | Custom prompt (`{plan}` and `{progress}` placeholders) |
 | `--prompt-file` | `.ralph-prompt.md` | Prompt file path |
 | `--reset, -r` | `false` | Remove generated files and state, then exit |
 | `--headless, -H` | `false` | CI-friendly output |
 | `--format` | `text` | Headless output format (text, jsonl, json) |
+| `--timestamps` | `false` | Include timestamps in headless output |
 | `--max-iterations` | (none) | Cap iterations (headless) |
 | `--max-time` | (none) | Cap runtime seconds (headless) |
 | `--server, -s` | (none) | OpenCode server URL |
@@ -77,6 +89,19 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--debug, -d` | `false` | Manual session creation |
 | `--yes` | `false` | Auto-confirm prompts |
 | `--auto-reset` | `true` | Auto-reset when no TTY prompt |
+
+### Init Subcommand
+
+```bash
+ralph init                    # create template PRD and prompt
+ralph init --from plan.md     # convert markdown plan to PRD JSON
+ralph init --force            # overwrite existing files
+```
+
+| Option | Description |
+|--------|-------------|
+| `--from` | Source plan or notes to convert into PRD JSON |
+| `--force` | Overwrite existing files |
 
 **Default prompt:**
 ```
@@ -92,12 +117,23 @@ Ralph reads configuration from `~/.config/ralph/config.json`:
   "model": "opencode/claude-opus-4-5",
   "plan": "prd.json",
   "progress": "progress.txt",
+  "adapter": "opencode-server",
   "server": "http://localhost:4190",
   "serverTimeout": 5000
 }
 ```
 
 CLI arguments override config file values.
+
+### Adapters
+
+Ralph supports multiple adapters for running the AI agent:
+
+| Adapter | Description |
+|---------|-------------|
+| `opencode-server` | Default. Connects to OpenCode server via SDK |
+| `opencode-run` | Spawns `opencode run` as PTY subprocess |
+| `codex` | Spawns OpenAI Codex CLI as PTY subprocess |
 
 ## Workflow Files
 
@@ -197,8 +233,19 @@ Ralph writes operational learnings here. Future iterations read it.
 
 | Key | Action |
 |-----|--------|
-| `p` | Pause/resume |
 | `q` / `Ctrl+C` | Quit |
+| `p` | Pause/Resume loop |
+| `c` | Open command palette |
+| `:` | Steering mode (send message to agent) |
+| `t` | Launch terminal with attach command |
+| `Shift+T` | Toggle tasks panel |
+| `o` | Toggle Details/Output view |
+| `d` | Toggle progress dashboard |
+| `?` | Show help overlay |
+| `↑` / `k` | Navigate up (in tasks panel) |
+| `↓` / `j` | Navigate down (in tasks panel) |
+| `n` | New session (debug mode only) |
+| `Escape` | Close overlay/panel |
 
 ## Architecture
 
