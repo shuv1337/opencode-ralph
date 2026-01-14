@@ -23,7 +23,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
 
     steps:
@@ -47,11 +47,33 @@ jobs:
         run: bun install
 
       - name: Publish to npm
+        id: publish
         run: bun run scripts/publish.ts
         env:
           RALPH_BUMP: ${{ inputs.bump }}
           RALPH_VERSION: ${{ inputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        if: ${{ steps.publish.outputs.version != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ steps.publish.outputs.version }}"
+          prerelease="${{ steps.publish.outputs.prerelease }}"
+          tag="v${version}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists."
+            exit 0
+          fi
+
+          flags=(--generate-notes --title "$tag" --target "$GITHUB_SHA")
+          if [ "$prerelease" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+
+          gh release create "$tag" "${flags[@]}"
 
       - name: Summary
         run: |

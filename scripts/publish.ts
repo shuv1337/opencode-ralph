@@ -95,6 +95,17 @@ console.log(`  Tag: ${tag}`);
 console.log(`  Preview: ${isPreview}`);
 console.log("");
 
+const githubOutput = process.env.GITHUB_OUTPUT;
+if (githubOutput) {
+  const outputLines = [
+    `version=${version}`,
+    `channel=${channel}`,
+    `tag=${tag}`,
+    `prerelease=${isPreview}`,
+  ].join("\n");
+  await fs.promises.appendFile(githubOutput, `${outputLines}\n`);
+}
+
 // Set version in environment for build script
 process.env.RALPH_VERSION = version;
 
