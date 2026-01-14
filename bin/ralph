@@ -1,1 +1,51 @@
-../dist/hona-ralph-cli-linux-x64/bin/ralph
+#!/usr/bin/env node
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+
+const platformMap = {
+  darwin: "darwin",
+  linux: "linux",
+  win32: "windows",
+};
+
+const archMap = {
+  x64: "x64",
+  arm64: "arm64",
+};
+
+const platform = platformMap[os.platform()] ?? os.platform();
+const arch = archMap[os.arch()] ?? os.arch();
+const packageName = `openralph-${platform}-${arch}`;
+const binaryName = platform === "windows" ? "ralph.exe" : "ralph";
+
+let binaryPath;
+try {
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageDir = path.dirname(packageJsonPath);
+  binaryPath = path.join(packageDir, "bin", binaryName);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Failed to resolve ${packageName}: ${message}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(binaryPath)) {
+  console.error(`Binary not found at ${binaryPath}`);
+  process.exit(1);
+}
+
+const child = spawn(binaryPath, process.argv.slice(2), { stdio: "inherit" });
+child.on("exit", (code) => {
+  process.exit(code ?? 0);
+});
+child.on("error", (error) => {
+  console.error(`Failed to run ${binaryName}: ${error.message}`);
+  process.exit(1);
+});
