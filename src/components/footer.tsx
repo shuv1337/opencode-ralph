@@ -1,49 +1,77 @@
-import { colors } from "./colors";
-import { formatDuration } from "../util/time";
+import { useTheme } from "../context/ThemeContext";
+import { formatDuration, formatNumber } from "../util/time";
+import type { TokenUsage } from "../state";
+import { keyboardShortcuts, layout } from "./tui-theme";
 
 export type FooterProps = {
   commits: number;
   elapsed: number;
-  paused: boolean;
+  status: "running" | "paused" | "ready" | "starting" | "complete" | "error";
   linesAdded: number;
   linesRemoved: number;
+  sessionActive?: boolean;
+  tokens?: TokenUsage;
 };
 
-/**
- * Footer component displaying keybind hints, commits count, and elapsed time.
- * Uses flexDirection="row" with a top border.
- */
 export function Footer(props: FooterProps) {
+  const { theme } = useTheme();
+  const t = () => theme();
+
+  const shortcuts = () => {
+    const list = [...keyboardShortcuts];
+    if (props.sessionActive) {
+      list.splice(3, 0, { key: ":", description: "Steer" });
+    }
+    return list;
+  };
+
+  const shortcutText = () =>
+    shortcuts()
+      .map(({ key, description }) => `${key}:${description}`)
+      .join("  ");
+
   return (
     <box
-      flexDirection="row"
       width="100%"
-      height={2}
+      height={layout.footer.height}
+      flexDirection="row"
+      justifyContent="space-between"
       alignItems="center"
+      backgroundColor={t().backgroundPanel}
       paddingLeft={1}
       paddingRight={1}
-      borderStyle="single"
-      border={["top"]}
-      borderColor={colors.border}
-      backgroundColor={colors.bg}
+      border
+      borderColor={t().border}
     >
-      {/* Keybind hints (left side) */}
-      <text fg={colors.fgMuted}>
-        (<span style={{ fg: colors.fg }}>q</span>) interrupt  (<span style={{ fg: colors.fg }}>p</span>) {props.paused ? "resume" : "pause"}
-      </text>
+      <box flexShrink={1} overflow="hidden">
+        <text fg={t().textMuted}>{shortcutText()}</text>
+      </box>
 
-      {/* Spacer */}
       <box flexGrow={1} />
 
-      {/* Stats (right side) */}
-      <text>
-        <span style={{ fg: colors.green }}>+{props.linesAdded}</span>
-        <span style={{ fg: colors.fgMuted }}> / </span>
-        <span style={{ fg: colors.red }}>-{props.linesRemoved}</span>
-        <span style={{ fg: colors.fgMuted }}>
-          {" "}{"\u00B7"}{" "}{props.commits} commits {"\u00B7"} {formatDuration(props.elapsed)}
-        </span>
-      </text>
+      <box flexDirection="row">
+        {props.tokens && (props.tokens.input > 0 || props.tokens.output > 0) && (
+          <>
+            <text fg={t().secondary}>{formatNumber(props.tokens.input)}in</text>
+            <text fg={t().textMuted}>/</text>
+            <text fg={t().secondary}>{formatNumber(props.tokens.output)}out</text>
+            {props.tokens.reasoning > 0 && (
+              <>
+                <text fg={t().textMuted}>/</text>
+                <text fg={t().secondary}>{formatNumber(props.tokens.reasoning)}r</text>
+              </>
+            )}
+            <text fg={t().textMuted}> · </text>
+          </>
+        )}
+        <text fg={t().success}>+{props.linesAdded}</text>
+        <text fg={t().textMuted}>/</text>
+        <text fg={t().error}>-{props.linesRemoved}</text>
+        <text fg={t().textMuted}> · </text>
+        <text fg={t().primary}>{props.commits}c</text>
+        <text fg={t().textMuted}> · </text>
+        <text fg={t().text}>{formatDuration(props.elapsed)}</text>
+      </box>
     </box>
   );
 }

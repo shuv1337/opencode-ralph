@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { parsePlan } from "../../src/plan";
+import { parsePlan, parsePlanTasks, type Task } from "../../src/plan";
 import path from "path";
 
 const fixturesDir = path.join(import.meta.dir, "../fixtures/plans");
@@ -58,5 +58,118 @@ describe("parsePlan", () => {
     // (Excludes checkboxes inside code blocks which are correctly ignored)
     const result = await parsePlan(path.join(fixturesDir, "complex-nested.md"));
     expect(result).toEqual({ done: 6, total: 13 });
+  });
+
+  it("should parse PRD JSON plans with passes fields", async () => {
+    const result = await parsePlan(path.join(fixturesDir, "prd-valid.json"));
+    expect(result).toEqual({ done: 1, total: 2 });
+  });
+
+  it("should parse PRD JSON object plans with items array", async () => {
+    const result = await parsePlan(path.join(fixturesDir, "prd-object.json"));
+    expect(result).toEqual({ done: 1, total: 2 });
+  });
+});
+
+describe("parsePlanTasks", () => {
+  it("should return empty array for non-existent file", async () => {
+    const result = await parsePlanTasks("/nonexistent/path/to/plan.md");
+    expect(result).toEqual([]);
+  });
+
+  it("should return empty array for empty file", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "empty.md"));
+    expect(result).toEqual([]);
+  });
+
+  it("should parse tasks with correct structure", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "partial-complete.md"));
+    
+    // Check we got the right number of tasks
+    expect(result.length).toBe(10);
+    
+    // Check first task structure
+    expect(result[0]).toEqual({
+      id: "task-7",
+      line: 7,
+      text: "Initialize project",
+      done: true,
+    });
+    
+    // Check an incomplete task
+    expect(result[2]).toEqual({
+      id: "task-9",
+      line: 9,
+      text: "Configure build system",
+      done: false,
+    });
+  });
+
+  it("should track line numbers correctly", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "partial-complete.md"));
+    
+    // Verify line numbers are 1-indexed and match actual file positions
+    const lineNumbers = result.map(t => t.line);
+    expect(lineNumbers).toEqual([7, 8, 9, 13, 14, 15, 19, 20, 21, 22]);
+  });
+
+  it("should handle uppercase [X] as completed", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "uppercase-complete.md"));
+    
+    // Count completed tasks
+    const completedCount = result.filter(t => t.done).length;
+    expect(completedCount).toBe(3);
+  });
+
+  it("should ignore checkboxes inside fenced code blocks", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "code-blocks.md"));
+    
+    // code-blocks.md has 5 real tasks, rest are in code blocks
+    expect(result.length).toBe(5);
+    
+    // Verify all tasks are from real section (lines 7-11)
+    const allFromRealSection = result.every(t => t.line >= 7 && t.line <= 11);
+    expect(allFromRealSection).toBe(true);
+  });
+
+  it("should generate unique IDs from line numbers", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "partial-complete.md"));
+    
+    // All IDs should be unique
+    const ids = result.map(t => t.id);
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(ids.length);
+    
+    // IDs should follow the task-{lineNumber} pattern
+    result.forEach(task => {
+      expect(task.id).toBe(`task-${task.line}`);
+    });
+  });
+
+  it("should trim task text", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "partial-complete.md"));
+    
+    // No task text should have leading/trailing whitespace
+    result.forEach(task => {
+      expect(task.text).toBe(task.text.trim());
+    });
+  });
+
+  it("should parse PRD JSON tasks into displayable items", async () => {
+    const result = await parsePlanTasks(path.join(fixturesDir, "prd-valid.json"));
+
+    expect(result.length).toBe(2);
+    expect(result[0]).toEqual({
+      id: "prd-1",
+      line: 1,
+      text: "[functional] Create the initial project scaffolding",
+      done: true,
+    });
+    expect(result[1]).toEqual({
+      id: "prd-2",
+      line: 2,
+      text: "[integration] Wire up the API client",
+      done: false,
+    });
   });
 });
