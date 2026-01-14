@@ -467,6 +467,46 @@ export type LoopCallbacks = {
   onTokens?: (tokens: TokenUsage) => void;
 };
 
+type PauseState = {
+  value: boolean;
+};
+
+const PAUSE_POLL_INTERVAL_MS = 1000;
+
+async function waitWhilePaused(
+  pauseState: PauseState,
+  callbacks: LoopCallbacks,
+  signal: AbortSignal
+): Promise<boolean> {
+  const pauseFilePath = ".ralph-pause";
+  if (!(await Bun.file(pauseFilePath).exists())) {
+    if (pauseState.value) {
+      pauseState.value = false;
+      log("loop", "Resuming");
+      callbacks.onResume();
+    }
+    return false;
+  }
+
+  if (!pauseState.value) {
+    pauseState.value = true;
+    log("loop", "Pausing");
+    callbacks.onPause();
+  }
+
+  while (!signal.aborted && (await Bun.file(pauseFilePath).exists())) {
+    await Bun.sleep(PAUSE_POLL_INTERVAL_MS);
+  }
+
+  if (!signal.aborted && pauseState.value) {
+    pauseState.value = false;
+    log("loop", "Resuming");
+    callbacks.onResume();
+  }
+
+  return true;
+}
+
 export async function runLoop(
   options: LoopOptions,
   persistedState: PersistedState,
@@ -518,7 +558,7 @@ export async function runLoop(
     // Check if pause file exists at startup - if so, start in paused state
     // to avoid calling onPause() callback (which would override "ready" status)
     const pauseFileExistsAtStart = await Bun.file(".ralph-pause").exists();
-    let isPaused = pauseFileExistsAtStart;
+    const pauseState: PauseState = { value: pauseFileExistsAtStart };
     let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
     
     // Error tracking for exponential backoff (local, not persisted)
@@ -534,20 +574,9 @@ export async function runLoop(
       }
 
       // Check for .ralph-pause file
-      const pauseFile = Bun.file(".ralph-pause");
-      if (await pauseFile.exists()) {
-        if (!isPaused) {
-          isPaused = true;
-          log("loop", "Pausing");
-          callbacks.onPause();
-        }
+      if (await waitWhilePaused(pauseState, callbacks, signal)) {
         if (signal.aborted) break;
-        await Bun.sleep(1000);
         continue;
-      } else if (isPaused) {
-        isPaused = false;
-        log("loop", "Resuming");
-        callbacks.onResume();
       }
 
       // Apply error backoff before iteration starts
@@ -653,6 +682,9 @@ export async function runLoop(
         const loggedTextByPartId = new Map<string, string>();
         
         for await (const event of events.stream) {
+          await waitWhilePaused(pauseState, callbacks, signal);
+          if (signal.aborted) break;
+
           // When SSE connection is established, send the prompt
           // This ensures we don't miss any events due to race conditions
           if (event.type === "server.connected" && !promptSent) {
@@ -896,7 +928,7 @@ async function runPtyLoop(
 
   let iteration = persistedState.iterationTimes.length;
   const pauseFileExistsAtStart = await Bun.file(".ralph-pause").exists();
-  let isPaused = pauseFileExistsAtStart;
+  const pauseState: PauseState = { value: pauseFileExistsAtStart };
   let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
   let errorCount = 0;
 
@@ -906,21 +938,9 @@ async function runPtyLoop(
     }
 
 
-    const pauseFile = Bun.file(".ralph-pause");
-
-    if (await pauseFile.exists()) {
-      if (!isPaused) {
-        isPaused = true;
-        log("loop", "Pausing");
-        callbacks.onPause();
-      }
+    if (await waitWhilePaused(pauseState, callbacks, signal)) {
       if (signal.aborted) break;
-      await Bun.sleep(1000);
       continue;
-    } else if (isPaused) {
-      isPaused = false;
-      log("loop", "Resuming");
-      callbacks.onResume();
     }
 
     if (errorCount > 0) {
@@ -993,6 +1013,7 @@ async function runPtyLoop(
       let receivedOutput = false;
 
       for await (const event of session.events) {
+        await waitWhilePaused(pauseState, callbacks, signal);
         if (signal.aborted) break;
 
         if (event.type === "output") {

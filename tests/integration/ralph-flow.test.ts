@@ -473,16 +473,15 @@ describe("ralph flow integration", () => {
       await unlink(".ralph-pause").catch(() => {});
     }, 500);
 
-    // Schedule creation of .ralph-done after resume to stop the loop
-    // Need to wait for:
-    // - Initial pause detection + 1000ms sleep
-    // - Resume detection (pause file removed at 500ms, checked after sleep)
-    // - Then we can complete
-    setTimeout(async () => {
-      await Bun.write(".ralph-done", "");
-    }, 1200);
+    const callbacksWithDone: LoopCallbacks = {
+      ...callbacks,
+      onResume: () => {
+        callbacks.onResume();
+        void Bun.write(".ralph-done", "");
+      },
+    };
 
-    await runLoop(options, persistedState, callbacks, controller.signal);
+    await runLoop(options, persistedState, callbacksWithDone, controller.signal);
 
     // onPause should NOT be called when starting with pause file already present
     // (the loop initializes isPaused=true when file exists at startup)
