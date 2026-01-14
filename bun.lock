@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "opencode-ralph",
+      "name": "openralph",
       "dependencies": {
         "@opencode-ai/sdk": "1.1.1",
         "@opentui/core": "0.1.68",

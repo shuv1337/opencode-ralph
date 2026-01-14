@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Postinstall script for ralph-opencode
+ * Postinstall script for openralph
  *
- * This script runs after `npm install ralph-opencode` and symlinks the
+ * This script runs after `bun install -g openralph` and symlinks the
  * platform-specific binary to the bin directory.
  *
  * On Windows, npm handles the .exe directly so we skip symlinking.
@@ -58,7 +58,7 @@ function detectPlatformAndArch() {
  */
 function findBinary() {
   const { platform, arch } = detectPlatformAndArch();
-  const packageName = `@hona/ralph-cli-${platform}-${arch}`;
+  const packageName = `openralph-${platform}-${arch}`;
   const binaryName = platform === "windows" ? "ralph.exe" : "ralph";
 
   try {

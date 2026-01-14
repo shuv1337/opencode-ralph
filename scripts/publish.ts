@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Publish script for ralph-opencode
+ * Publish script for openralph
  *
  * Builds all platform binaries and publishes them to npm along with the main wrapper package.
  *
@@ -29,7 +29,7 @@ const projectRoot = path.resolve(__dirname, "..");
 process.chdir(projectRoot);
 
 const pkg = await Bun.file("./package.json").json();
-const PACKAGE_NAME = "@hona/ralph-cli";
+const PACKAGE_NAME = "openralph";
 
 // Determine channel and version
 const env = {
@@ -88,7 +88,7 @@ const version = await (async () => {
 
 const tag = isPreview ? channel : "latest";
 
-console.log("=== ralph-opencode publish ===");
+console.log("=== openralph publish ===");
 console.log(`  Version: ${version}`);
 console.log(`  Channel: ${channel}`);
 console.log(`  Tag: ${tag}`);
@@ -104,7 +104,7 @@ const { binaries } = await import("./build.ts");
 
 // Smoke test current platform binary
 const platformName = process.platform === "win32" ? "windows" : process.platform;
-const currentPlatformPkg = `@hona/ralph-cli-${platformName}-${process.arch}`;
+const currentPlatformPkg = `openralph-${platformName}-${process.arch}`;
 const currentPlatformDir = currentPlatformPkg.replace("@", "").replace("/", "-");
 const binaryName = process.platform === "win32" ? "ralph.exe" : "ralph";
 const binaryPath = `./dist/${currentPlatformDir}/bin/${binaryName}`;
@@ -152,7 +152,7 @@ const mainPackageJson = {
   optionalDependencies: binaries,
   repository: {
     type: "git",
-    url: "git+https://github.com/hona/opencode-ralph.git",
+    url: "git+https://github.com/shuv1337/openralph.git",
   },
   keywords: ["cli", "ai", "coding", "assistant"],
   license: "MIT",
@@ -190,4 +190,4 @@ await $`npm publish *.tgz --access public --tag ${tag}`.cwd(mainPkgDir);
 console.log(`Published ${PACKAGE_NAME}@${version}\n`);
 
 console.log("=== Publish complete ===");
-console.log(`\nInstall with: npm install -g ${PACKAGE_NAME}${isPreview ? `@${tag}` : ""}`);
+console.log(`\nInstall with: bun install -g ${PACKAGE_NAME}${isPreview ? `@${tag}` : ""}`);

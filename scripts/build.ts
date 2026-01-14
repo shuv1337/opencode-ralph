@@ -71,10 +71,10 @@ if (!singleFlag && !skipInstall) {
 const binaries: Record<string, string> = {};
 
 for (const target of targets) {
-  // Package name follows npm convention: @hona/ralph-cli-{platform}-{arch}
+  // Package name follows npm convention: openralph-{platform}-{arch}
   // Note: win32 becomes "windows" in package name to avoid npm issues
   const platformName = target.os === "win32" ? "windows" : target.os;
-  const packageName = `@hona/ralph-cli-${platformName}-${target.arch}`;
+  const packageName = `openralph-${platformName}-${target.arch}`;
   // Directory name replaces @ and / for filesystem compatibility
   const dirName = packageName.replace("@", "").replace("/", "-");
   const binaryName = target.os === "win32" ? "ralph.exe" : "ralph";

@@ -1,5 +1,5 @@
 {
-  "name": "@hona/ralph-cli",
+  "name": "openralph",
   "version": "1.0.10",
   "type": "module",
   "bin": {

@@ -64,4 +64,4 @@ jobs:
           else
             echo "- **Type**: Preview release" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "- **Install**: \`npm install -g ralph-opencode\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Install**: `bun install -g openralph`" >> $GITHUB_STEP_SUMMARY
