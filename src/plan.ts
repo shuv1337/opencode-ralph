@@ -1,5 +1,5 @@
 /**
- * Plan file parser for opencode-ralph
+ * Plan file parser for openralph
  */
 
 export type PrdItem = {

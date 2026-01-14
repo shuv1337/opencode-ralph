@@ -1,6 +1,6 @@
 # Test Plan for Manual Testing
 
-This file is used to test the `parsePlan()` function in opencode-ralph.
+This file is used to test the `parsePlan()` function in openralph.
 
 ## Test Tasks
 

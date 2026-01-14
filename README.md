@@ -11,17 +11,21 @@ AI agent loop for autonomous task execution. Reads a PRD, picks one task, comple
 </p>
 
 <p align="center">
-  <img src="ralph-opencode-terminal.jpg" alt="Ralph with OpenCode terminal side-by-side" width="100%" />
+  <img src="openralph-terminal.jpg" alt="Ralph with openralph terminal side-by-side" width="100%" />
 </p>
+
+## Acknowledgements
+
+openralph is a fork of the original `opencode-ralph` project. Huge thanks to Hona for the original work and inspiration: https://github.com/hona/opencode-ralph.
 
 ## Quick Start
 
 ```bash
 # Install stable release
-bun install -g @hona/ralph-cli
+bun install -g openralph
 
 # Or install dev snapshot (latest from dev branch)
-bun install -g @hona/ralph-cli@dev
+bun install -g openralph@dev
 
 # Initialize PRD, progress log, and prompt
 ralph init
@@ -33,8 +37,8 @@ ralph
 ### Install from Source
 
 ```bash
-git clone https://github.com/hona/opencode-ralph.git
-cd opencode-ralph
+git clone https://github.com/shuv1337/openralph.git
+cd openralph
 bun install
 bun run build:single  # compiles for current platform
 ```

@@ -1,5 +1,5 @@
 /**
- * Git utilities for opencode-ralph
+ * Git utilities for openralph
  */
 
 /**

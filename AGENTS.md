@@ -104,18 +104,18 @@ bun test
 bun run build
 
 # 3. Install to /usr/local/bin (Linux/macOS)
-sudo cp dist/hona-ralph-cli-linux-x64/bin/ralph /usr/local/bin/ralph
+sudo cp dist/openralph-linux-x64/bin/ralph /usr/local/bin/ralph
 
 # 4. Verify installation
 ralph -v
 ```
 
 **Platform-specific binary paths:**
-- Linux x64: `dist/hona-ralph-cli-linux-x64/bin/ralph`
-- Linux arm64: `dist/hona-ralph-cli-linux-arm64/bin/ralph`
-- macOS x64: `dist/hona-ralph-cli-darwin-x64/bin/ralph`
-- macOS arm64: `dist/hona-ralph-cli-darwin-arm64/bin/ralph`
-- Windows x64: `dist/hona-ralph-cli-windows-x64/bin/ralph.exe`
+- Linux x64: `dist/openralph-linux-x64/bin/ralph`
+- Linux arm64: `dist/openralph-linux-arm64/bin/ralph`
+- macOS x64: `dist/openralph-darwin-x64/bin/ralph`
+- macOS arm64: `dist/openralph-darwin-arm64/bin/ralph`
+- Windows x64: `dist/openralph-windows-x64/bin/ralph.exe`
 
 ### Version Handling
 
@@ -150,7 +150,7 @@ git commit -m "chore: bump version to X.Y.Z"
 
 # 3. Build and install
 bun run build
-sudo cp dist/hona-ralph-cli-linux-x64/bin/ralph /usr/local/bin/ralph
+sudo cp dist/openralph-linux-x64/bin/ralph /usr/local/bin/ralph
 
 # 4. Verify
 ralph -v
@@ -182,5 +182,5 @@ Options for `bump`:
 
 The workflow will automatically:
 1. Build binaries for all platforms (darwin/linux/windows, arm64/x64)
-2. Publish platform-specific packages (`@hona/ralph-cli-{platform}-{arch}`)
-3. Publish the main wrapper package (`@hona/ralph-cli`)
+2. Publish platform-specific packages (`openralph-{platform}-{arch}`)
+3. Publish the main wrapper package (`openralph`)
