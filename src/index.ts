@@ -651,14 +651,10 @@ async function main() {
       clearInterval(keepaliveInterval);
 
       if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
-      // Windows readline cleanup
-      if (keypressHandler) {
-        process.stdin.off("keypress", keypressHandler);
-        keypressHandler = null;
-      }
-      if (readlineInterface) {
-        readlineInterface.close();
-        readlineInterface = null;
+      // Clean up fallback stdin handler if still active
+      if (fallbackStdinHandler) {
+        process.stdin.off("data", fallbackStdinHandler);
+        fallbackStdinHandler = null;
       }
       // Phase 3.3: Restore raw mode if fallback enabled it
       if (fallbackRawModeEnabled && process.stdin.isTTY) {
@@ -697,17 +693,17 @@ async function main() {
     // AND the stdin listener is removed to prevent any double-handling.
     //
     // Windows-specific: Reduced timeout (2s vs 5s) because OpenTUI's onMount hook
-    // is less reliable on Windows. Also uses readline.emitKeypressEvents for better
-    // Windows key handling (proper escape sequence parsing, virtual key support).
+    // is less reliable on Windows. We use a simple stdin data handler (NOT 
+    // readline.emitKeypressEvents) because readline permanently modifies stdin's
+    // event emission behavior, which interferes with OpenTUI's stdin handling.
     const isWindows = process.platform === "win32";
     let keyboardWorking = false;
     let fallbackEnabled = false;
     let fallbackFirstKeyLogged = false; // Phase 1.2: Only log first fallback key to avoid spam
     let fallbackStdinHandler: ((data: Buffer) => Promise<void>) | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let keypressHandler: ((char: string, key: any) => void) | null = null;
-    let readlineInterface: ReturnType<typeof import("readline").createInterface> | null = null;
-    // Reduced timeout on Windows where OpenTUI keyboard is less reliable
+    // Reduced timeout on Windows where OpenTUI keyboard is less reliable.
+    // We use a simple stdin data handler (NOT readline.emitKeypressEvents) to avoid
+    // permanently modifying stdin's event emission behavior.
     const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindows ? 2000 : 5000;
     
     /**
@@ -715,29 +711,17 @@ async function main() {
      * Called when OpenTUI keyboard is confirmed working.
      */
     const disableFallbackHandler = () => {
-      // Clean up readline keypress handler (Windows)
-      if (keypressHandler) {
-        process.stdin.off("keypress", keypressHandler);
-        keypressHandler = null;
-        log("main", "Readline keypress handler removed");
-      }
-      if (readlineInterface) {
-        readlineInterface.close();
-        readlineInterface = null;
-      }
-      // Clean up raw stdin handler (non-Windows fallback)
-      if (fallbackStdinHandler && fallbackEnabled) {
+      // Clean up raw stdin data handler
+      if (fallbackStdinHandler) {
         process.stdin.off("data", fallbackStdinHandler);
         fallbackStdinHandler = null;
-        fallbackEnabled = false;
-        // Phase 3.3: Restore raw mode if we enabled it
-        if (fallbackRawModeEnabled && process.stdin.isTTY) {
-          process.stdin.setRawMode(false);
-          fallbackRawModeEnabled = false;
-          log("main", "Raw mode restored to normal");
-        }
-        log("main", "Fallback stdin handler removed - OpenTUI has exclusive keyboard control");
+        log("main", "Fallback stdin data handler removed");
       }
+      // Mark fallback as disabled
+      fallbackEnabled = false;
+      // NOTE: We do NOT restore raw mode here because OpenTUI has taken over
+      // and needs stdin to remain in raw mode. OpenTUI will handle cleanup
+      // when it shuts down.
     };
     
     const onKeyboardEvent = () => {
@@ -756,8 +740,8 @@ async function main() {
       
       // OpenTUI keyboard may not be working - enable fallback stdin handler
       fallbackEnabled = true;
-      const timeoutSec = KEYBOARD_FALLBACK_TIMEOUT_MS / 1000;
-      log("main", `Enabling fallback stdin handler (OpenTUI keyboard not detected after ${timeoutSec}s)`, { isWindows });
+      log("main", `Enabling fallback stdin handler (OpenTUI keyboard not detected after ${KEYBOARD_FALLBACK_TIMEOUT_MS / 1000}s)`, 
+        { isWindows });
       
       // Set stdin to raw mode for single-keypress detection
       if (process.stdin.isTTY) {
@@ -766,108 +750,51 @@ async function main() {
       }
       process.stdin.resume();
       
-      // Windows-specific: Use readline.emitKeypressEvents for better key handling
-      // This provides proper escape sequence parsing and Windows virtual key support
-      if (isWindows) {
-        const readline = await import("readline");
+      // Use simple data handler for both Windows and non-Windows.
+      // We intentionally do NOT use readline.emitKeypressEvents() because it
+      // permanently modifies stdin's event emission behavior, which interferes
+      // with OpenTUI's stdin handling even after cleanup.
+      fallbackStdinHandler = async (data: Buffer) => {
+        // If OpenTUI keyboard started working, ignore this event
+        if (keyboardWorking) {
+          return;
+        }
         
-        // Create readline interface with reduced escape code timeout
-        // (Node.js issue #38663: escape key presses can cause subsequent keypress events to be lost)
-        readlineInterface = readline.createInterface({
-          input: process.stdin,
-          escapeCodeTimeout: 50, // Reduced timeout for escape sequences
-        });
+        const char = data.toString();
+        // Phase 1.2: Only log first fallback key to avoid spam
+        if (!fallbackFirstKeyLogged) {
+          fallbackFirstKeyLogged = true;
+          log("main", "First fallback stdin key event", { 
+            char: char.replace(/\x03/g, "^C"),
+            isWindows,
+          });
+        }
         
-        // Emit keypress events on stdin
-        readline.emitKeypressEvents(process.stdin, readlineInterface);
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        keypressHandler = async (char: string, key: any) => {
-          // If OpenTUI keyboard started working, ignore this event
-          if (keyboardWorking) {
-            return;
+        // Handle 'q' for quit
+        if (char === "q" || char === "Q") {
+          await requestQuit("fallback-stdin-q");
+        }
+        // Handle Ctrl+C (0x03)
+        if (char === "\x03") {
+          await requestQuit("fallback-stdin-ctrl-c");
+        }
+        // Handle 'p' for pause toggle
+        if (char === "p" || char === "P") {
+          log("main", "Fallback stdin: toggle pause");
+          const PAUSE_FILE = ".ralph-pause";
+          const file = Bun.file(PAUSE_FILE);
+          const exists = await file.exists();
+          if (exists) {
+            const fs = await import("node:fs/promises");
+            await fs.unlink(PAUSE_FILE);
+          } else {
+            await Bun.write(PAUSE_FILE, String(process.pid));
           }
-          
-          // Phase 1.2: Only log first fallback key to avoid spam
-          if (!fallbackFirstKeyLogged) {
-            fallbackFirstKeyLogged = true;
-            log("main", "First fallback readline keypress event (Windows)", { 
-              char: char?.replace?.(/\x03/g, "^C") ?? "",
-              keyName: key?.name,
-              ctrl: key?.ctrl,
-              meta: key?.meta,
-            });
-          }
-          
-          // Handle 'q' for quit
-          if (key?.name === "q" && !key.ctrl && !key.meta) {
-            await requestQuit("fallback-readline-q");
-          }
-          // Handle Ctrl+C
-          if (key?.ctrl && key?.name === "c") {
-            await requestQuit("fallback-readline-ctrl-c");
-          }
-          // Handle 'p' for pause toggle
-          if (key?.name === "p" && !key.ctrl && !key.meta) {
-            log("main", "Fallback readline: toggle pause");
-            const PAUSE_FILE = ".ralph-pause";
-            const file = Bun.file(PAUSE_FILE);
-            const exists = await file.exists();
-            if (exists) {
-              const fs = await import("node:fs/promises");
-              await fs.unlink(PAUSE_FILE);
-            } else {
-              await Bun.write(PAUSE_FILE, String(process.pid));
-            }
-          }
-        };
-        
-        process.stdin.on("keypress", keypressHandler);
-        log("main", "Windows readline keypress handler installed");
-      } else {
-        // Non-Windows: Use raw stdin handler
-        // Create and store the handler so we can remove it later
-        fallbackStdinHandler = async (data: Buffer) => {
-          // If OpenTUI keyboard started working, ignore this event
-          // (handler will be removed shortly by disableFallbackHandler)
-          if (keyboardWorking) {
-            return;
-          }
-          
-          const char = data.toString();
-          // Phase 1.2: Only log first fallback key to avoid spam
-          if (!fallbackFirstKeyLogged) {
-            fallbackFirstKeyLogged = true;
-            log("main", "First fallback stdin key event", { 
-              char: char.replace(/\x03/g, "^C"),
-            });
-          }
-          
-          // Handle 'q' for quit
-          if (char === "q" || char === "Q") {
-            await requestQuit("fallback-stdin-q");
-          }
-          // Handle Ctrl+C (0x03)
-          if (char === "\x03") {
-            await requestQuit("fallback-stdin-ctrl-c");
-          }
-          // Handle 'p' for pause toggle
-          if (char === "p" || char === "P") {
-            log("main", "Fallback stdin: toggle pause");
-            const PAUSE_FILE = ".ralph-pause";
-            const file = Bun.file(PAUSE_FILE);
-            const exists = await file.exists();
-            if (exists) {
-              const fs = await import("node:fs/promises");
-              await fs.unlink(PAUSE_FILE);
-            } else {
-              await Bun.write(PAUSE_FILE, String(process.pid));
-            }
-          }
-        };
-        
-        process.stdin.on("data", fallbackStdinHandler);
-      }
+        }
+      };
+      
+      process.stdin.on("data", fallbackStdinHandler);
+      log("main", "Simple stdin data handler installed (no readline)");
     }, KEYBOARD_FALLBACK_TIMEOUT_MS);
 
     // Handle SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
@@ -903,6 +830,10 @@ async function main() {
         await requestQuit("SIGHUP");
       });
     }
+
+    // NOTE: We use a simple stdin data handler instead of readline.emitKeypressEvents()
+    // because readline permanently modifies stdin's event emission behavior, which
+    // interferes with OpenTUI's stdin handling even after cleanup.
 
 // Start the TUI app and get state setters
     log("main", "Starting TUI app");
@@ -1031,6 +962,8 @@ async function main() {
         saveState(stateToUse);
         // Update the iteration times in the app for ETA calculation
         stateSetters.updateIterationTimes([...stateToUse.iterationTimes]);
+        // Trigger render when iteration ends
+        stateSetters.requestRender();
       },
       onTasksUpdated: (done, total) => {
         log("main", "onTasksUpdated", { done, total });
@@ -1059,6 +992,8 @@ async function main() {
           ...prev,
           status: "paused",
         }));
+        // Trigger render when paused
+        stateSetters.requestRender();
       },
       onResume: () => {
         // Update state.status to "running"
@@ -1066,6 +1001,8 @@ async function main() {
           ...prev,
           status: "running",
         }));
+        // Trigger render when resumed
+        stateSetters.requestRender();
       },
       onComplete: () => {
         batchedUpdater.flushNow();
@@ -1083,6 +1020,8 @@ async function main() {
             isIdle: true,
           };
         });
+        // Trigger render when complete
+        stateSetters.requestRender();
       },
       onError: (error) => {
         // Update state.status to "error" and set state.error
@@ -1091,6 +1030,8 @@ async function main() {
           status: "error",
           error,
         }));
+        // Trigger render on error
+        stateSetters.requestRender();
       },
       onIdleChanged: (isIdle) => {
         // Update isIdle state for idle mode optimization
@@ -1098,6 +1039,10 @@ async function main() {
           ...prev,
           isIdle,
         }));
+        // Trigger render when session becomes idle (completed processing)
+        if (isIdle) {
+          stateSetters.requestRender();
+        }
       },
       onSessionCreated: (session) => {
         // Store session info in state for steering mode
@@ -1112,6 +1057,8 @@ async function main() {
         }));
         // Store sendMessage function for steering overlay
         stateSetters.setSendMessage(session.sendMessage);
+        // Trigger render when new session starts
+        stateSetters.requestRender();
       },
       onSessionEnded: (_sessionId) => {
         // Clear session fields when session ends
@@ -1125,6 +1072,8 @@ async function main() {
         }));
         // Clear sendMessage function
         stateSetters.setSendMessage(null);
+        // Trigger render when session ends (cleanup complete)
+        stateSetters.requestRender();
       },
       onBackoff: (backoffMs, retryAt) => {
         // Update state with backoff info for retry countdown display
@@ -1171,6 +1120,22 @@ async function main() {
           terminalBuffer: mode === "pty" ? "" : prev.terminalBuffer,
         }));
       },
+      // Real-time plan file modification handler with debouncing
+      // Uses 150ms debounce to batch rapid file edits (e.g., multiple task updates)
+      onPlanFileModified: (() => {
+        let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+        return () => {
+          if (debounceTimeout) {
+            clearTimeout(debounceTimeout);
+          }
+          debounceTimeout = setTimeout(() => {
+            debounceTimeout = null;
+            log("main", "Plan file modified, triggering task refresh");
+            stateSetters.triggerTaskRefresh();
+            stateSetters.requestRender();
+          }, 150);
+        };
+      })(),
     }, abortController.signal).catch((error) => {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);

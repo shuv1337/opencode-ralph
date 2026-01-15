@@ -49,6 +49,10 @@ export type AppStateSetters = {
   setState: Setter<LoopState>;
   updateIterationTimes: (times: number[]) => void;
   setSendMessage: (fn: ((message: string) => Promise<void>) | null) => void;
+  /** Request a render update - call after session events or state changes */
+  requestRender: () => void;
+  /** Trigger immediate task list refresh (for real-time plan file updates) */
+  triggerTaskRefresh: () => void;
 };
 
 /**
@@ -64,6 +68,7 @@ let globalSetState: Setter<LoopState> | null = null;
 let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
 let globalSendMessage: ((message: string) => Promise<void>) | null = null;
 let globalRenderer: ReturnType<typeof useRenderer> | null = null;
+let globalTriggerTaskRefresh: (() => void) | null = null;
 let rendererDestroyed = false;
 
 export function destroyRenderer(): void {
@@ -157,10 +162,25 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
     updateIterationTimes: (times) => {
       iterationTimesRef.length = 0;
       iterationTimesRef.push(...times);
-      globalUpdateIterationTimes!(times);
+      // Guard against null - callback may be nullified during TUI cleanup
+      // while loop iteration is still completing (race condition on quit)
+      if (globalUpdateIterationTimes) {
+        globalUpdateIterationTimes(times);
+      }
     },
     setSendMessage: (fn) => {
       globalSendMessage = fn;
+    },
+    requestRender: () => {
+      // Request a render from the global renderer if available
+      globalRenderer?.requestRender?.();
+    },
+    triggerTaskRefresh: () => {
+      // Trigger immediate task list refresh if available
+      // Guard against null during TUI cleanup
+      if (globalTriggerTaskRefresh) {
+        globalTriggerTaskRefresh();
+      }
     },
   };
 
@@ -236,6 +256,8 @@ export function App(props: AppProps) {
   // Tasks panel state signals
   const [showTasks, setShowTasks] = createSignal(true);
   const [tasks, setTasks] = createSignal<Task[]>([]);
+  // Whether to show completed tasks in the task list (default: false for optimization)
+  const [showCompletedTasks, setShowCompletedTasks] = createSignal(false);
 
   // Function to refresh tasks from plan file
   const refreshTasks = async () => {
@@ -303,6 +325,8 @@ export function App(props: AppProps) {
     // This keeps the hook-based stats in sync with external updates
     loopStats.initialize(props.persistedState.startTime, times);
   };
+  // Export refreshTasks for real-time plan file updates
+  globalTriggerTaskRefresh = refreshTasks;
 
   // Update elapsed time and ETA periodically (5000ms to reduce render frequency)
   // Uses loopStats hook for pause-aware elapsed time tracking
@@ -325,6 +349,7 @@ export function App(props: AppProps) {
     // Clean up module-level references
     globalSetState = null;
     globalUpdateIterationTimes = null;
+    globalTriggerTaskRefresh = null;
     globalRenderer = null;
   });
 
@@ -389,6 +414,8 @@ export function App(props: AppProps) {
               showTasks={showTasks}
               setShowTasks={setShowTasks}
               tasks={tasks}
+              showCompletedTasks={showCompletedTasks}
+              setShowCompletedTasks={setShowCompletedTasks}
               loopStore={loopStore}
               loopStats={loopStats}
             />
@@ -418,6 +445,8 @@ type AppContentProps = {
   showTasks: () => boolean;
   setShowTasks: (v: boolean) => void;
   tasks: () => Task[];
+  showCompletedTasks: () => boolean;
+  setShowCompletedTasks: (v: boolean) => void;
   // Hook-based state stores (for gradual migration)
   loopStore: LoopStateStore;
   loopStats: LoopStatsStore;
@@ -513,11 +542,12 @@ function AppContent(props: AppContentProps) {
   });
   
   const [selectedTaskIndex, setSelectedTaskIndex] = createSignal(0);
-  const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("details");
+  const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("output");
   const [showHelp, setShowHelp] = createSignal(false);
   const [showDashboard, setShowDashboard] = createSignal(false);
 
-  const uiTasks = createMemo<UiTask[]>(() =>
+  // All tasks converted to UiTask format
+  const allUiTasks = createMemo<UiTask[]>(() =>
     props.tasks().map((task) => ({
       id: task.id,
       title: task.text,
@@ -525,6 +555,15 @@ function AppContent(props: AppContentProps) {
       line: task.line,
     }))
   );
+
+  // Filtered tasks based on showCompletedTasks setting (default: hide completed for optimization)
+  const uiTasks = createMemo<UiTask[]>(() => {
+    const all = allUiTasks();
+    if (props.showCompletedTasks()) {
+      return all;
+    }
+    return all.filter((task) => task.status !== "done");
+  });
 
   const selectedTask = createMemo(() => {
     const list = uiTasks();
@@ -725,6 +764,20 @@ function AppContent(props: AppContentProps) {
         onSelect: () => {
           log("app", "Tasks panel toggled via command palette");
           props.setShowTasks(!props.showTasks());
+        },
+      },
+    ]);
+
+    // Register "Toggle completed tasks" action
+    command.register("toggleCompletedTasks", () => [
+      {
+        title: props.showCompletedTasks() ? "Hide completed tasks" : "Show completed tasks",
+        value: "toggleCompletedTasks",
+        description: "Show/hide completed tasks in the task list",
+        keybind: keymap.toggleCompleted.label,
+        onSelect: () => {
+          log("app", "Completed tasks toggled via command palette", { showCompleted: !props.showCompletedTasks() });
+          props.setShowCompletedTasks(!props.showCompletedTasks());
         },
       },
     ]);
@@ -1210,6 +1263,13 @@ function AppContent(props: AppContentProps) {
       if (selectedTaskIndex() < uiTasks().length - 1) {
         setSelectedTaskIndex(selectedTaskIndex() + 1);
       }
+      return;
+    }
+
+    // Shift+C: toggle completed tasks visibility (check before plain C)
+    if (matchesKeybind(e, keymap.toggleCompleted)) {
+      log("app", "Completed tasks toggled via Shift+C", { showCompleted: !props.showCompletedTasks() });
+      props.setShowCompletedTasks(!props.showCompletedTasks());
       return;
     }
 
