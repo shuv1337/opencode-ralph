@@ -136,5 +136,17 @@ for (const target of targets) {
 
 console.log(`\nBuild complete! Built ${Object.keys(binaries).length} packages.`);
 
+// For single-platform builds, automatically link the package so `ralph` command works
+if (singleFlag) {
+  console.log("\nLinking package locally...");
+  try {
+    await $`bun link`;
+    console.log("Done! You can now use the 'ralph' command.");
+  } catch (error) {
+    console.warn("Warning: Failed to run 'bun link'. You may need to run it manually.");
+    console.warn("Alternatively, run directly: bun run ./bin/ralph");
+  }
+}
+
 // Export binaries map for use by publish script
 export { binaries, version };

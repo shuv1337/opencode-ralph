@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
+const projectRoot = path.resolve(__dirname, "..");
 
 const platformMap = {
   darwin: "darwin",
@@ -26,18 +27,35 @@ const packageName = `openralph-${platform}-${arch}`;
 const binaryName = platform === "windows" ? "ralph.exe" : "ralph";
 
 let binaryPath;
-try {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
-  const packageDir = path.dirname(packageJsonPath);
-  binaryPath = path.join(packageDir, "bin", binaryName);
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`Failed to resolve ${packageName}: ${message}`);
-  process.exit(1);
+
+// First, check for locally built binary in dist/ directory
+const localBinaryPath = path.join(projectRoot, "dist", packageName, "bin", binaryName);
+if (fs.existsSync(localBinaryPath)) {
+  binaryPath = localBinaryPath;
+} else {
+  // Fall back to npm package resolution for installed packages
+  try {
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const packageDir = path.dirname(packageJsonPath);
+    binaryPath = path.join(packageDir, "bin", binaryName);
+  } catch (error) {
+    // No local build and no npm package found
+    console.error(`Error: No ralph binary found for ${platform}-${arch}.`);
+    console.error("");
+    console.error("To fix this, run:");
+    console.error("  bun run build:single   # Build for current platform");
+    console.error("");
+    console.error("Or install globally:");
+    console.error("  bun install -g openralph");
+    process.exit(1);
+  }
 }
 
 if (!fs.existsSync(binaryPath)) {
-  console.error(`Binary not found at ${binaryPath}`);
+  console.error(`Error: Binary not found at ${binaryPath}`);
+  console.error("");
+  console.error("To fix this, run:");
+  console.error("  bun run build:single   # Rebuild for current platform");
   process.exit(1);
 }
 
