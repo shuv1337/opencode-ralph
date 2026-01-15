@@ -512,7 +512,6 @@ async function main() {
     // Determine the state to use after confirmation prompts
     let stateToUse: PersistedState | null = null;
     let shouldReset = false; // Reset is handled above, this is for auto-reset prompts
-    let stdinWasPrimed = false; // Track if confirm() primed stdin (for Windows fix)
 
     if (existingState && !shouldReset) {
       const samePlan = existingState.planFile === argv.plan;
@@ -535,7 +534,6 @@ async function main() {
       } else if (samePlan) {
         // Same plan file - ask to continue
         const continueRun = await confirm("Continue previous run?");
-        stdinWasPrimed = true; // confirm() touched stdin
         if (continueRun) {
           stateToUse = existingState;
         } else {
@@ -544,7 +542,6 @@ async function main() {
       } else {
         // Different plan file - ask to reset
         const resetForNewPlan = await confirm("Reset state for new plan?");
-        stdinWasPrimed = true; // confirm() touched stdin
         if (resetForNewPlan) {
           shouldReset = true;
         } else {
@@ -654,14 +651,10 @@ async function main() {
       clearInterval(keepaliveInterval);
 
       if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
-      // Windows readline cleanup
-      if (keypressHandler) {
-        process.stdin.off("keypress", keypressHandler);
-        keypressHandler = null;
-      }
-      if (readlineInterface) {
-        readlineInterface.close();
-        readlineInterface = null;
+      // Clean up fallback stdin handler if still active
+      if (fallbackStdinHandler) {
+        process.stdin.off("data", fallbackStdinHandler);
+        fallbackStdinHandler = null;
       }
       // Phase 3.3: Restore raw mode if fallback enabled it
       if (fallbackRawModeEnabled && process.stdin.isTTY) {
@@ -700,38 +693,25 @@ async function main() {
     // AND the stdin listener is removed to prevent any double-handling.
     //
     // Windows-specific: Reduced timeout (2s vs 5s) because OpenTUI's onMount hook
-    // is less reliable on Windows. Also uses readline.emitKeypressEvents for better
-    // Windows key handling (proper escape sequence parsing, virtual key support).
+    // is less reliable on Windows. We use a simple stdin data handler (NOT 
+    // readline.emitKeypressEvents) because readline permanently modifies stdin's
+    // event emission behavior, which interferes with OpenTUI's stdin handling.
     const isWindows = process.platform === "win32";
     let keyboardWorking = false;
     let fallbackEnabled = false;
     let fallbackFirstKeyLogged = false; // Phase 1.2: Only log first fallback key to avoid spam
     let fallbackStdinHandler: ((data: Buffer) => Promise<void>) | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let keypressHandler: ((char: string, key: any) => void) | null = null;
-    let readlineInterface: ReturnType<typeof import("readline").createInterface> | null = null;
-    // On Windows first run (no confirm() called), use 0ms timeout to immediately activate
-    // the fallback, which calls readline.emitKeypressEvents - this "wakes up" Windows Console
-    // input so OpenTUI can receive keyboard events. On subsequent runs, confirm() primes stdin.
-    const isWindowsFirstRun = isWindows && !stdinWasPrimed;
-    const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindowsFirstRun ? 0 : (isWindows ? 2000 : 5000);
+    // Reduced timeout on Windows where OpenTUI keyboard is less reliable.
+    // We use a simple stdin data handler (NOT readline.emitKeypressEvents) to avoid
+    // permanently modifying stdin's event emission behavior.
+    const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindows ? 2000 : 5000;
     
     /**
      * Permanently disable the fallback stdin handler.
      * Called when OpenTUI keyboard is confirmed working.
      */
     const disableFallbackHandler = () => {
-      // Clean up readline keypress handler (Windows with readline - subsequent runs)
-      if (keypressHandler) {
-        process.stdin.off("keypress", keypressHandler);
-        keypressHandler = null;
-        log("main", "Readline keypress handler removed");
-      }
-      if (readlineInterface) {
-        readlineInterface.close();
-        readlineInterface = null;
-      }
-      // Clean up raw stdin data handler (Windows first run or non-Windows)
+      // Clean up raw stdin data handler
       if (fallbackStdinHandler) {
         process.stdin.off("data", fallbackStdinHandler);
         fallbackStdinHandler = null;
@@ -760,11 +740,8 @@ async function main() {
       
       // OpenTUI keyboard may not be working - enable fallback stdin handler
       fallbackEnabled = true;
-      const isImmediate = KEYBOARD_FALLBACK_TIMEOUT_MS === 0;
-      log("main", isImmediate 
-        ? "Enabling fallback stdin handler immediately (Windows first run - activating stdin)"
-        : `Enabling fallback stdin handler (OpenTUI keyboard not detected after ${KEYBOARD_FALLBACK_TIMEOUT_MS / 1000}s)`, 
-        { isWindows, isWindowsFirstRun });
+      log("main", `Enabling fallback stdin handler (OpenTUI keyboard not detected after ${KEYBOARD_FALLBACK_TIMEOUT_MS / 1000}s)`, 
+        { isWindows });
       
       // Set stdin to raw mode for single-keypress detection
       if (process.stdin.isTTY) {
@@ -773,157 +750,51 @@ async function main() {
       }
       process.stdin.resume();
       
-      // Windows-specific handling
-      if (isWindows) {
-        if (isWindowsFirstRun) {
-          // For Windows first run, use simple data handler instead of readline.
-          // readline.emitKeypressEvents() permanently modifies stdin's event emission
-          // behavior, which interferes with OpenTUI's stdin handling even after cleanup.
-          // The simple data handler just activates stdin without modifying its behavior.
-          fallbackStdinHandler = async (data: Buffer) => {
-            // If OpenTUI keyboard started working, ignore this event
-            if (keyboardWorking) {
-              return;
-            }
-            
-            const char = data.toString();
-            // Phase 1.2: Only log first fallback key to avoid spam
-            if (!fallbackFirstKeyLogged) {
-              fallbackFirstKeyLogged = true;
-              log("main", "First fallback stdin key event (Windows first run)", { 
-                char: char.replace(/\x03/g, "^C"),
-              });
-            }
-            
-            // Handle 'q' for quit
-            if (char === "q" || char === "Q") {
-              await requestQuit("fallback-stdin-q");
-            }
-            // Handle Ctrl+C (0x03)
-            if (char === "\x03") {
-              await requestQuit("fallback-stdin-ctrl-c");
-            }
-            // Handle 'p' for pause toggle
-            if (char === "p" || char === "P") {
-              log("main", "Fallback stdin: toggle pause");
-              const PAUSE_FILE = ".ralph-pause";
-              const file = Bun.file(PAUSE_FILE);
-              const exists = await file.exists();
-              if (exists) {
-                const fs = await import("node:fs/promises");
-                await fs.unlink(PAUSE_FILE);
-              } else {
-                await Bun.write(PAUSE_FILE, String(process.pid));
-              }
-            }
-          };
-          
-          process.stdin.on("data", fallbackStdinHandler);
-          log("main", "Windows first run: simple stdin handler installed (no readline)");
-        } else {
-          // For subsequent Windows runs, use readline.emitKeypressEvents for better key handling
-          // This provides proper escape sequence parsing and Windows virtual key support.
-          // Since confirm() was called, stdin is already primed and readline won't interfere.
-          const readline = await import("readline");
-          
-          // Create readline interface with reduced escape code timeout
-          // (Node.js issue #38663: escape key presses can cause subsequent keypress events to be lost)
-          readlineInterface = readline.createInterface({
-            input: process.stdin,
-            escapeCodeTimeout: 50, // Reduced timeout for escape sequences
-          });
-          
-          // Emit keypress events on stdin
-          readline.emitKeypressEvents(process.stdin, readlineInterface);
-          
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          keypressHandler = async (char: string, key: any) => {
-            // If OpenTUI keyboard started working, ignore this event
-            if (keyboardWorking) {
-              return;
-            }
-            
-            // Phase 1.2: Only log first fallback key to avoid spam
-            if (!fallbackFirstKeyLogged) {
-              fallbackFirstKeyLogged = true;
-              log("main", "First fallback readline keypress event (Windows)", { 
-                char: char?.replace?.(/\x03/g, "^C") ?? "",
-                keyName: key?.name,
-                ctrl: key?.ctrl,
-                meta: key?.meta,
-              });
-            }
-            
-            // Handle 'q' for quit
-            if (key?.name === "q" && !key.ctrl && !key.meta) {
-              await requestQuit("fallback-readline-q");
-            }
-            // Handle Ctrl+C
-            if (key?.ctrl && key?.name === "c") {
-              await requestQuit("fallback-readline-ctrl-c");
-            }
-            // Handle 'p' for pause toggle
-            if (key?.name === "p" && !key.ctrl && !key.meta) {
-              log("main", "Fallback readline: toggle pause");
-              const PAUSE_FILE = ".ralph-pause";
-              const file = Bun.file(PAUSE_FILE);
-              const exists = await file.exists();
-              if (exists) {
-                const fs = await import("node:fs/promises");
-                await fs.unlink(PAUSE_FILE);
-              } else {
-                await Bun.write(PAUSE_FILE, String(process.pid));
-              }
-            }
-          };
-          
-          process.stdin.on("keypress", keypressHandler);
-          log("main", "Windows readline keypress handler installed");
+      // Use simple data handler for both Windows and non-Windows.
+      // We intentionally do NOT use readline.emitKeypressEvents() because it
+      // permanently modifies stdin's event emission behavior, which interferes
+      // with OpenTUI's stdin handling even after cleanup.
+      fallbackStdinHandler = async (data: Buffer) => {
+        // If OpenTUI keyboard started working, ignore this event
+        if (keyboardWorking) {
+          return;
         }
-      } else {
-        // Non-Windows: Use raw stdin handler
-        // Create and store the handler so we can remove it later
-        fallbackStdinHandler = async (data: Buffer) => {
-          // If OpenTUI keyboard started working, ignore this event
-          // (handler will be removed shortly by disableFallbackHandler)
-          if (keyboardWorking) {
-            return;
-          }
-          
-          const char = data.toString();
-          // Phase 1.2: Only log first fallback key to avoid spam
-          if (!fallbackFirstKeyLogged) {
-            fallbackFirstKeyLogged = true;
-            log("main", "First fallback stdin key event", { 
-              char: char.replace(/\x03/g, "^C"),
-            });
-          }
-          
-          // Handle 'q' for quit
-          if (char === "q" || char === "Q") {
-            await requestQuit("fallback-stdin-q");
-          }
-          // Handle Ctrl+C (0x03)
-          if (char === "\x03") {
-            await requestQuit("fallback-stdin-ctrl-c");
-          }
-          // Handle 'p' for pause toggle
-          if (char === "p" || char === "P") {
-            log("main", "Fallback stdin: toggle pause");
-            const PAUSE_FILE = ".ralph-pause";
-            const file = Bun.file(PAUSE_FILE);
-            const exists = await file.exists();
-            if (exists) {
-              const fs = await import("node:fs/promises");
-              await fs.unlink(PAUSE_FILE);
-            } else {
-              await Bun.write(PAUSE_FILE, String(process.pid));
-            }
-          }
-        };
         
-        process.stdin.on("data", fallbackStdinHandler);
-      }
+        const char = data.toString();
+        // Phase 1.2: Only log first fallback key to avoid spam
+        if (!fallbackFirstKeyLogged) {
+          fallbackFirstKeyLogged = true;
+          log("main", "First fallback stdin key event", { 
+            char: char.replace(/\x03/g, "^C"),
+            isWindows,
+          });
+        }
+        
+        // Handle 'q' for quit
+        if (char === "q" || char === "Q") {
+          await requestQuit("fallback-stdin-q");
+        }
+        // Handle Ctrl+C (0x03)
+        if (char === "\x03") {
+          await requestQuit("fallback-stdin-ctrl-c");
+        }
+        // Handle 'p' for pause toggle
+        if (char === "p" || char === "P") {
+          log("main", "Fallback stdin: toggle pause");
+          const PAUSE_FILE = ".ralph-pause";
+          const file = Bun.file(PAUSE_FILE);
+          const exists = await file.exists();
+          if (exists) {
+            const fs = await import("node:fs/promises");
+            await fs.unlink(PAUSE_FILE);
+          } else {
+            await Bun.write(PAUSE_FILE, String(process.pid));
+          }
+        }
+      };
+      
+      process.stdin.on("data", fallbackStdinHandler);
+      log("main", "Simple stdin data handler installed (no readline)");
     }, KEYBOARD_FALLBACK_TIMEOUT_MS);
 
     // Handle SIGINT (Ctrl+C) and SIGTERM signals for graceful shutdown
@@ -960,11 +831,9 @@ async function main() {
       });
     }
 
-    // NOTE: Previous "Windows stdin priming" code was here but has been removed.
-    // The priming approach (setRawMode + resume + pause) was ineffective.
-    // Instead, we now use immediate fallback activation (KEYBOARD_FALLBACK_TIMEOUT_MS = 0)
-    // on Windows first run, which calls readline.emitKeypressEvents() - this properly
-    // "activates" Windows Console input so OpenTUI can receive keyboard events.
+    // NOTE: We use a simple stdin data handler instead of readline.emitKeypressEvents()
+    // because readline permanently modifies stdin's event emission behavior, which
+    // interferes with OpenTUI's stdin handling even after cleanup.
 
 // Start the TUI app and get state setters
     log("main", "Starting TUI app");
