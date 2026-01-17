@@ -1,6 +1,7 @@
 import { createMemo } from "solid-js";
 import { useTerminalDimensions } from "@opentui/solid";
 import { useTheme } from "../context/ThemeContext";
+import { renderMarkdownBold, stripMarkdownBold } from "../lib/text-utils";
 import { formatElapsedTime, layout, statusIndicators } from "./tui-theme";
 import type { RalphStatus, UiTask } from "./tui-types";
 import { formatEta } from "../lib/time";
@@ -19,9 +20,27 @@ export type HeaderProps = {
 };
 
 function truncateText(text: string, maxWidth: number): string {
-  if (text.length <= maxWidth) return text;
-  if (maxWidth <= 3) return text.slice(0, maxWidth);
-  return text.slice(0, maxWidth - 1) + "…";
+  // Strip markdown to get actual display length
+  const plainText = stripMarkdownBold(text);
+  if (plainText.length <= maxWidth) return text;
+  if (maxWidth <= 3) return plainText.slice(0, maxWidth);
+  
+  // Need to truncate - work with plain text for length calculation
+  const targetLength = maxWidth - 1; // Leave room for ellipsis
+  let plainIndex = 0;
+  let originalIndex = 0;
+  
+  while (plainIndex < targetLength && originalIndex < text.length) {
+    // Skip ** markers
+    if (text.slice(originalIndex, originalIndex + 2) === "**") {
+      originalIndex += 2;
+      continue;
+    }
+    plainIndex++;
+    originalIndex++;
+  }
+  
+  return stripMarkdownBold(text.slice(0, originalIndex)) + "…";
 }
 
 function getStatusDisplay(status: RalphStatus, theme: ReturnType<typeof useTheme>["theme"]) {
@@ -93,6 +112,18 @@ export function Header(props: HeaderProps) {
 
   const taskLabel = createMemo(() => taskDisplay());
 
+  // Render task label with markdown bold parsing
+  const renderedTaskLabel = createMemo(() => {
+    const label = taskLabel();
+    if (!label) return null;
+    return renderMarkdownBold(
+      label, 
+      t().secondary, 
+      t().accent,
+      t().info // Use info color for tags in header
+    );
+  });
+
   return (
     <box
       width="100%"
@@ -105,6 +136,8 @@ export function Header(props: HeaderProps) {
       backgroundColor={t().backgroundPanel}
     >
       <box flexDirection="row" gap={1} flexShrink={1}>
+        <text fg={t().primary}>◆ OpenRalph</text>
+        <text fg={t().textMuted}>│</text>
         {props.debug && (
           <>
             <text fg={t().warning}>[DEBUG]</text>
@@ -116,7 +149,7 @@ export function Header(props: HeaderProps) {
         {taskLabel() && (
           <>
             <text fg={t().textMuted}> → </text>
-            <text fg={t().secondary}>{taskLabel()}</text>
+            {renderedTaskLabel()}
           </>
         )}
       </box>

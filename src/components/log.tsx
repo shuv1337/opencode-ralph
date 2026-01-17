@@ -1,6 +1,7 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { TOOL_ICONS } from "../lib/theme-colors";
 import { formatDuration } from "../lib/time";
+import { renderMarkdownBold } from "../lib/text-utils";
 import type { ToolEvent } from "../state";
 import { useTheme } from "../context/ThemeContext";
 import type { Theme } from "../lib/theme-resolver";
@@ -193,6 +194,8 @@ function ToolEventItem(props: { event: ToolEvent; theme: Theme }) {
   const isVerbose = createMemo(() => props.event.verbose === true);
   // Use dimmed colors for verbose events
   const textColor = createMemo(() => isVerbose() ? props.theme.textMuted : props.theme.text);
+  // Bold text uses accent color for emphasis
+  const boldColor = createMemo(() => props.theme.accent);
   
   // Calculate available width: terminal width minus icon (2 chars) and scrollbar/margin (3 chars)
   const availableWidth = createMemo(() => {
@@ -212,10 +215,16 @@ function ToolEventItem(props: { event: ToolEvent; theme: Theme }) {
     return truncateText(props.event.detail, maxDetailWidth);
   });
 
+  // Parse markdown bold in the main text
+  const parsedText = createMemo(() => 
+    renderMarkdownBold(truncatedText(), textColor(), boldColor())
+  );
+
   return (
     <box width="100%" flexDirection="row">
       <text fg={isVerbose() ? props.theme.textMuted : iconColor()}>{icon()}</text>
-      <text fg={textColor()}> {truncatedText()}</text>
+      <text fg={textColor()}> </text>
+      {parsedText()}
       <Show when={truncatedDetail()}>
         <text fg={props.theme.textMuted}> {truncatedDetail()}</text>
       </Show>

@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createMemo } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
+import { renderMarkdownBold, stripMarkdownBold } from "../lib/text-utils";
 import { taskStatusIndicators } from "./tui-theme";
 import type { TaskStatus, UiTask } from "./tui-types";
 
@@ -19,9 +20,28 @@ export type LeftPanelProps = {
 };
 
 function truncateText(text: string, maxWidth: number): string {
-  if (text.length <= maxWidth) return text;
-  if (maxWidth <= 3) return text.slice(0, maxWidth);
-  return text.slice(0, maxWidth - 1) + "…";
+  // Strip markdown to get actual display length
+  const plainText = stripMarkdownBold(text);
+  if (plainText.length <= maxWidth) return text;
+  if (maxWidth <= 3) return plainText.slice(0, maxWidth);
+  
+  // Need to truncate - work with plain text for length calculation
+  // but preserve markdown in the truncated portion
+  const targetLength = maxWidth - 1; // Leave room for ellipsis
+  let plainIndex = 0;
+  let originalIndex = 0;
+  
+  while (plainIndex < targetLength && originalIndex < text.length) {
+    // Skip ** markers
+    if (text.slice(originalIndex, originalIndex + 2) === "**") {
+      originalIndex += 2;
+      continue;
+    }
+    plainIndex++;
+    originalIndex++;
+  }
+  
+  return stripMarkdownBold(text.slice(0, originalIndex)) + "…";
 }
 
 // Fixed width for task ID column alignment
@@ -73,10 +93,24 @@ function TaskRow(props: {
     return t().text;
   };
 
+  // Bold/emphasis color: same as text when selected, accent otherwise
+  const boldColor = () => {
+    if (props.isSelected) return t().background;
+    return t().accent;
+  };
+
   const idColor = () => {
     if (props.isSelected) return t().background;
     return t().textMuted;
   };
+
+  // Render title with markdown bold parsing
+  const renderedTitle = () => renderMarkdownBold(
+    truncatedTitle(), 
+    textColor(), 
+    boldColor(),
+    t().secondary // Use secondary color for [tags]
+  );
 
   return (
     <box
@@ -88,7 +122,8 @@ function TaskRow(props: {
     >
       <text fg={statusColor()}>{statusIndicator()}</text>
       <text fg={idColor()}> {paddedId()}</text>
-      <text fg={textColor()}> {truncatedTitle()}</text>
+      <text fg={textColor()}> </text>
+      {renderedTitle()}
     </box>
   );
 }

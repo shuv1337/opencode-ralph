@@ -49,9 +49,10 @@ export function Footer(props: FooterProps) {
 
       <box flexGrow={1} />
 
-      <box flexDirection="row">
+      <box flexDirection="row" gap={1}>
         {props.tokens && (props.tokens.input > 0 || props.tokens.output > 0) && (
           <>
+            <text fg={t().textMuted}>Tokens:</text>
             <text fg={t().secondary}>{formatNumber(props.tokens.input)}in</text>
             <text fg={t().textMuted}>/</text>
             <text fg={t().secondary}>{formatNumber(props.tokens.output)}out</text>
@@ -63,15 +64,18 @@ export function Footer(props: FooterProps) {
                 <text fg={t().secondary}>{formatNumber(props.tokens.reasoning)}r</text>
               </>
             )}
-            <text fg={t().textMuted}> · </text>
+            <text fg={t().textMuted}> │ </text>
           </>
         )}
+        <text fg={t().textMuted}>Diff:</text>
         <text fg={t().success}>+{props.linesAdded}</text>
         <text fg={t().textMuted}>/</text>
         <text fg={t().error}>-{props.linesRemoved}</text>
-        <text fg={t().textMuted}> · </text>
-        <text fg={t().primary}>{props.commits}c</text>
-        <text fg={t().textMuted}> · </text>
+        <text fg={t().textMuted}> │ </text>
+        <text fg={t().textMuted}>Commits:</text>
+        <text fg={t().primary}>{props.commits}</text>
+        <text fg={t().textMuted}> │ </text>
+        <text fg={t().textMuted}>Time:</text>
         <text fg={t().text}>{formatDuration(props.elapsed)}</text>
       </box>
     </box>

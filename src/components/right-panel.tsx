@@ -1,5 +1,6 @@
 import { Show } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
+import { renderMarkdownBold } from "../lib/text-utils";
 import { formatViewMode, taskStatusIndicators } from "./tui-theme";
 import type { DetailsViewMode, TaskStatus, UiTask } from "./tui-types";
 import type { ToolEvent } from "../state";
@@ -57,12 +58,27 @@ function TaskDetails(props: { task: UiTask }) {
   const statusColor = () => getStatusColor(props.task.status, theme);
   const statusIndicator = () => taskStatusIndicators[props.task.status];
 
+  // Render title and description with markdown bold parsing
+  const renderedTitle = () => renderMarkdownBold(
+    props.task.title, 
+    t().text, 
+    t().accent,
+    t().secondary // Use secondary color for [tags]
+  );
+  const renderedDescription = () => renderMarkdownBold(
+    props.task.description ?? props.task.title,
+    t().text,
+    t().accent,
+    t().secondary // Use secondary color for [tags]
+  );
+
   return (
     <box flexDirection="column" padding={1} flexGrow={1}>
       <scrollbox flexGrow={1}>
         <box marginBottom={1}>
           <text fg={statusColor()}>{statusIndicator()}</text>
-          <text fg={t().text}> {props.task.title}</text>
+          <text fg={t().text}> </text>
+          {renderedTitle()}
           <text fg={t().textMuted}> ({props.task.id})</text>
         </box>
 
@@ -87,7 +103,7 @@ function TaskDetails(props: { task: UiTask }) {
           borderColor={t().borderSubtle}
           backgroundColor={t().backgroundElement}
         >
-          <text fg={t().text}>{props.task.description ?? props.task.title}</text>
+          {renderedDescription()}
         </box>
       </scrollbox>
 
