@@ -7,7 +7,7 @@ import { loadState, saveState, PersistedState, LoopOptions, trimEvents, LoopStat
 import { confirm } from "./prompt";
 import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp, destroyRenderer } from "./app";
-import { runLoop } from "./loop";
+import { runLoop, cleanupDebugSession } from "./loop";
 import { runHeadlessMode } from "./headless";
 import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress } from "./init";
 import { STATE_FILE } from "./state";
@@ -497,6 +497,9 @@ async function main() {
   }
 
   let exitCode = 0;
+  
+  // SUBTASK-002: Declare at function scope so finally block can access it
+  let runLoopPromiseOuter: Promise<void> | null = null;
 
   try {
     // Load existing state if present
@@ -646,6 +649,13 @@ async function main() {
     let fallbackTimeout: ReturnType<typeof setTimeout> | undefined;
     // Phase 3.3: Declare fallback raw mode flag early so cleanup() can reference it
     let fallbackRawModeEnabled = false;
+    
+    // SUBTASK-002: Store runLoop promise so we can await it during cleanup
+    let runLoopPromise: Promise<void> | null = null;
+    // SUBTASK-002: Auto-quit timeout (declared early so cleanup can clear it)
+    let autoQuitTimeout: ReturnType<typeof setTimeout> | undefined;
+    // Timeout for graceful shutdown (ms)
+    const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000;
 
     // Cleanup function for graceful shutdown
     async function cleanup() {
@@ -654,6 +664,7 @@ async function main() {
       clearInterval(keepaliveInterval);
 
       if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
+      if (autoQuitTimeout) clearTimeout(autoQuitTimeout); // SUBTASK-002: Clear auto-quit timeout
       // Clean up fallback stdin handler if still active
       if (fallbackStdinHandler) {
         process.stdin.off("data", fallbackStdinHandler);
@@ -668,7 +679,32 @@ async function main() {
           // Ignore errors - stdin may already be closed
         }
       }
+      
+      // SUBTASK-002: Abort the loop and wait for it to finish cleanup
+      log("main", "Aborting loop and waiting for cleanup...");
       abortController.abort();
+      
+      // Wait for runLoop to finish with a timeout
+      if (runLoopPromise) {
+        log("main", "Waiting for runLoop to finish...");
+        const timeoutPromise = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            log("main", `runLoop cleanup timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms`);
+            resolve();
+          }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+        });
+        
+        try {
+          await Promise.race([runLoopPromise, timeoutPromise]);
+          log("main", "runLoop finished (or timed out)");
+        } catch (error) {
+          // Ignore errors from runLoop during shutdown - they're expected when aborting
+          log("main", "runLoop error during shutdown (expected)", { 
+            error: error instanceof Error ? error.message : String(error) 
+          });
+        }
+      }
+      
       await releaseLock();
       log("main", "cleanup() done");
     }
@@ -884,6 +920,8 @@ async function main() {
       // Don't start the loop - wait for user to manually create sessions
       await exitPromise;
       log("main", "Debug mode: exit received, cleaning up");
+      // Clean up debug session resources (including opencode server/child processes)
+      await cleanupDebugSession();
       return;
     }
 
@@ -897,9 +935,13 @@ async function main() {
     }));
     log("main", "Starting in ready state - press 'p' to begin");
 
+    // SUBTASK-002: Auto-quit delay after completion
+    // Set to 2 seconds to give the user time to see "complete" status
+    const AUTO_QUIT_DELAY_MS = 2000;
+    
     // Start the loop in parallel with callbacks wired to app state
     log("main", "Starting loop (paused)");
-    runLoop(loopOptions, stateToUse, {
+    runLoopPromise = runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
         log("main", "onIterationStart", { iteration });
         stateSetters.setState((prev) => ({
@@ -1025,6 +1067,14 @@ async function main() {
         });
         // Trigger render when complete
         stateSetters.requestRender();
+        
+        // SUBTASK-002: Auto-quit after completion delay
+        // This ensures all opencode.exe child processes are properly terminated
+        log("main", "All tasks complete, scheduling auto-quit", { delayMs: AUTO_QUIT_DELAY_MS });
+        autoQuitTimeout = setTimeout(() => {
+          log("main", "Auto-quit triggered after completion");
+          requestQuit("auto-complete");
+        }, AUTO_QUIT_DELAY_MS);
       },
       onError: (error) => {
         // Update state.status to "error" and set state.error
@@ -1143,17 +1193,48 @@ async function main() {
       log("main", "Loop error", { error: error instanceof Error ? error.message : String(error) });
       console.error("Loop error:", error);
     });
+    
+    // SUBTASK-002: Copy to outer scope for finally block access
+    runLoopPromiseOuter = runLoopPromise;
 
     // Wait for the app to exit, then cleanup
     log("main", "Waiting for exit");
     await exitPromise;
     log("main", "Exit received, cleaning up");
+    
+    // Ensure proper cleanup when exit happens via TUI close (not via requestQuit)
+    // This handles the case where user closes window or TUI exits normally
+    if (!quitRequested) {
+      log("main", "Exit via TUI close (not requestQuit), calling cleanup...");
+      await cleanup();
+    }
   } catch (error) {
     exitCode = 1;
     log("main", "ERROR in main", { error: error instanceof Error ? error.message : String(error) });
     console.error("Error:", error instanceof Error ? error.message : String(error));
   } finally {
     log("main", "FINALLY BLOCK ENTERED");
+    
+    // SUBTASK-002: Final safety net - ensure runLoop has finished before exit
+    // This handles edge cases where cleanup() wasn't called or didn't complete
+    if (runLoopPromiseOuter) {
+      log("main", "Awaiting runLoopPromise in finally block...");
+      const finalTimeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          log("main", "Final runLoopPromise wait timed out after 3s");
+          resolve();
+        }, 3000);
+      });
+      
+      try {
+        await Promise.race([runLoopPromiseOuter, finalTimeoutPromise]);
+        log("main", "runLoopPromise finished in finally block");
+      } catch {
+        // Ignore errors - cleanup is best effort at this point
+        log("main", "runLoopPromise error in finally block (ignored)");
+      }
+    }
+    
     destroyRenderer();
     await releaseLock();
     log("main", "Lock released");

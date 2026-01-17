@@ -1,4 +1,4 @@
-import { For, Show, createEffect } from "solid-js";
+import { For, Show, createEffect, createMemo } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
 import { taskStatusIndicators } from "./tui-theme";
@@ -10,6 +10,12 @@ export type LeftPanelProps = {
   width: number;
   /** Panel height - used to trigger scroll recalculation on terminal resize */
   height: number;
+  /** Total number of tasks (including completed) - used to show "all completed" message */
+  totalTasks?: number;
+  /** Whether completed tasks are currently being shown */
+  showingCompleted?: boolean;
+  /** Callback when a task is clicked/selected */
+  onSelect?: (index: number) => void;
 };
 
 function truncateText(text: string, maxWidth: number): string {
@@ -18,16 +24,19 @@ function truncateText(text: string, maxWidth: number): string {
   return text.slice(0, maxWidth - 1) + "…";
 }
 
+// Fixed width for task ID column alignment
+const ID_COLUMN_WIDTH = 10;
+
 function getStatusColor(status: TaskStatus, theme: ReturnType<typeof useTheme>["theme"]): string {
   const t = theme();
   switch (status) {
     case "done":
-      return t.success;
+      return t.success;      // green
     case "actionable":
-      return t.success;
+      return t.primary;      // blue
     case "pending":
     default:
-      return t.textMuted;
+      return t.textMuted;    // gray
   }
 }
 
@@ -35,22 +44,39 @@ function TaskRow(props: {
   task: UiTask;
   isSelected: boolean;
   maxWidth: number;
+  index: number;
 }) {
   const { theme } = useTheme();
   const t = () => theme();
 
+  // Color-coded left-margin status indicator
   const statusColor = () => getStatusColor(props.task.status, theme);
   const statusIndicator = () => taskStatusIndicators[props.task.status];
 
-  const titleWidth = () => Math.max(10, props.maxWidth - props.task.id.length - 3);
+  // Fixed-width ID column for alignment
+  const paddedId = () => props.task.id.padEnd(ID_COLUMN_WIDTH).slice(0, ID_COLUMN_WIDTH);
+
+  // Title width accounts for: status indicator (1) + space (1) + ID (10) + space (1) + padding (2)
+  const titleWidth = () => Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5);
   const truncatedTitle = () => truncateText(props.task.title, titleWidth());
 
-  const titleColor = () => {
-    if (props.task.status === "done") return t().textMuted;
-    return props.isSelected ? t().primary : t().text;
+  // Row background: zebra striping with selection override
+  const rowBg = () => {
+    if (props.isSelected) return t().primary;
+    return props.index % 2 === 0 ? t().background : t().backgroundPanel;
   };
 
-  const idColor = () => (props.task.status === "done" ? t().textMuted : t().textMuted);
+  // Text colors: inverted for selection, muted for done tasks
+  const textColor = () => {
+    if (props.isSelected) return t().background;
+    if (props.task.status === "done") return t().textMuted;
+    return t().text;
+  };
+
+  const idColor = () => {
+    if (props.isSelected) return t().background;
+    return t().textMuted;
+  };
 
   return (
     <box
@@ -58,11 +84,11 @@ function TaskRow(props: {
       flexDirection="row"
       paddingLeft={1}
       paddingRight={1}
-      backgroundColor={props.isSelected ? t().backgroundElement : "transparent"}
+      backgroundColor={rowBg()}
     >
       <text fg={statusColor()}>{statusIndicator()}</text>
-      <text fg={idColor()}> {props.task.id}</text>
-      <text fg={titleColor()}> {truncatedTitle()}</text>
+      <text fg={idColor()}> {paddedId()}</text>
+      <text fg={textColor()}> {truncatedTitle()}</text>
     </box>
   );
 }
@@ -74,37 +100,66 @@ export function LeftPanel(props: LeftPanelProps) {
 
   const maxRowWidth = () => Math.max(20, props.width - 4);
 
+  // Compute the empty state message based on context
+  // Uses createMemo to ensure proper reactivity when task state changes
+  const emptyMessage = createMemo(() => {
+    const totalTasks = props.totalTasks ?? 0;
+    const showingCompleted = props.showingCompleted ?? false;
+    
+    // If there are total tasks but none visible, all are completed (and hidden)
+    if (totalTasks > 0 && !showingCompleted) {
+      return `All ${totalTasks} tasks completed! 🎉`;
+    }
+    
+    // No tasks at all
+    return "No tasks loaded";
+  });
+
+  // Track the task list length for reactivity - forces re-render when it changes
+  const taskCount = createMemo(() => props.tasks.length);
+
   createEffect(() => {
     const selectedIndex = props.selectedIndex;
-    const taskCount = props.tasks.length;
+    const count = taskCount();
     // Access height to create reactive dependency - effect re-runs on terminal resize
-    const _panelHeight = props.height;
+    const _height = props.height;
 
-    if (!scrollboxRef || taskCount === 0) {
+    if (!scrollboxRef || count === 0) {
+      // Reset scroll position when task list becomes empty
+      if (scrollboxRef) {
+        scrollboxRef.scrollTop = 0;
+      }
       return;
     }
 
-    const viewportHeight = scrollboxRef.viewport?.height ?? 0;
-    if (viewportHeight <= 0) {
-      return;
-    }
+    // Use queueMicrotask to ensure DOM is ready before scrolling
+    queueMicrotask(() => {
+      if (!scrollboxRef) return;
 
-    const currentTop = scrollboxRef.scrollTop;
-    const maxVisibleIndex = currentTop + viewportHeight - 1;
-    let nextTop = currentTop;
+      const viewportHeight = scrollboxRef.viewport?.height ?? 0;
+      if (viewportHeight <= 0) return;
 
-    if (selectedIndex < currentTop) {
-      nextTop = selectedIndex;
-    } else if (selectedIndex > maxVisibleIndex) {
-      nextTop = selectedIndex - viewportHeight + 1;
-    }
+      const currentTop = scrollboxRef.scrollTop;
+      const maxVisibleIndex = currentTop + viewportHeight - 1;
+      let nextTop = currentTop;
 
-    const maxScrollTop = Math.max(0, scrollboxRef.scrollHeight - viewportHeight);
-    nextTop = Math.min(maxScrollTop, Math.max(0, nextTop));
+      // Scroll up if selected is above viewport
+      if (selectedIndex < currentTop) {
+        nextTop = selectedIndex;
+      }
+      // Scroll down if selected is below viewport
+      else if (selectedIndex > maxVisibleIndex) {
+        nextTop = selectedIndex - viewportHeight + 1;
+      }
 
-    if (nextTop !== scrollboxRef.scrollTop) {
-      scrollboxRef.scrollTop = nextTop;
-    }
+      // Clamp to valid range
+      const maxScrollTop = Math.max(0, count - viewportHeight);
+      nextTop = Math.min(maxScrollTop, Math.max(0, nextTop));
+
+      if (nextTop !== scrollboxRef.scrollTop) {
+        scrollboxRef.scrollTop = nextTop;
+      }
+    });
   });
 
   return (
@@ -139,21 +194,28 @@ export function LeftPanel(props: LeftPanelProps) {
           },
         }}
       >
+        {/* Use keyed rendering to force complete re-render when task count changes */}
         <Show
-          when={props.tasks.length > 0}
+          when={taskCount() > 0}
           fallback={
-            <box padding={1}>
-              <text fg={t().textMuted}>No tasks loaded</text>
+            <box padding={1} flexDirection="column">
+              <text fg={t().success}>{emptyMessage()}</text>
+              <Show when={(props.totalTasks ?? 0) > 0 && !(props.showingCompleted ?? false)}>
+                <text fg={t().textMuted}>Press Shift+C to show completed</text>
+              </Show>
             </box>
           }
         >
           <For each={props.tasks}>
             {(task, index) => (
-              <TaskRow
-                task={task}
-                isSelected={index() === props.selectedIndex}
-                maxWidth={maxRowWidth()}
-              />
+              <box onMouseDown={() => props.onSelect?.(index())}>
+                <TaskRow
+                  task={task}
+                  isSelected={index() === props.selectedIndex}
+                  maxWidth={maxRowWidth()}
+                  index={index()}
+                />
+              </box>
             )}
           </For>
         </Show>

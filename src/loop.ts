@@ -343,10 +343,29 @@ export async function createDebugSession(options: {
  * Clean up debug mode resources.
  * Call this when exiting debug mode.
  */
-export function cleanupDebugSession(): void {
+export async function cleanupDebugSession(): Promise<void> {
   if (debugServer) {
     log("loop", "Debug mode: cleaning up server");
-    debugServer.close();
+    const shouldForceCleanup = !debugServer.attached;
+    
+    try {
+      debugServer.close();
+      log("loop", "Debug mode: server close called");
+    } catch (error) {
+      log("loop", "Debug mode: error closing server", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    
+    // Wait briefly for graceful shutdown
+    await Bun.sleep(500);
+    
+    // On Windows, force terminate any remaining processes (only if we started the server)
+    if (process.platform === "win32" && shouldForceCleanup) {
+      log("loop", "Debug mode: Windows force cleanup");
+      await forceTerminateOpencodeProcesses();
+    }
+    
     debugServer = null;
   }
   debugClient = null;
@@ -509,6 +528,64 @@ async function waitWhilePaused(
   return true;
 }
 
+/**
+ * Force terminate any remaining opencode child processes on Windows.
+ * This is a fallback when graceful shutdown doesn't complete in time.
+ */
+async function forceTerminateOpencodeProcesses(): Promise<void> {
+  if (process.platform !== "win32") {
+    return;
+  }
+  
+  try {
+    // Use taskkill to force terminate any remaining opencode.exe processes
+    // The /F flag forces termination, /IM specifies image name
+    const proc = Bun.spawn(["taskkill", "/F", "/IM", "opencode.exe"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await proc.exited;
+    log("loop", "Force terminated opencode.exe processes");
+  } catch (error) {
+    // Ignore errors - process may not exist or taskkill may fail
+    log("loop", "Force terminate failed (may be normal)", { 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+  }
+}
+
+/**
+ * Wait for a promise with a timeout.
+ * Returns true if the promise resolved within the timeout, false otherwise.
+ */
+async function waitWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  description: string
+): Promise<{ completed: boolean; result?: T }> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  
+  const timeoutPromise = new Promise<{ completed: false }>((resolve) => {
+    timeoutId = setTimeout(() => {
+      log("loop", `${description} timed out after ${timeoutMs}ms`);
+      resolve({ completed: false });
+    }, timeoutMs);
+  });
+  
+  try {
+    const result = await Promise.race([
+      promise.then(r => ({ completed: true as const, result: r })),
+      timeoutPromise,
+    ]);
+    
+    if (timeoutId) clearTimeout(timeoutId);
+    return result;
+  } catch (error) {
+    if (timeoutId) clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
 export async function runLoop(
   options: LoopOptions,
   persistedState: PersistedState,
@@ -532,6 +609,10 @@ export async function runLoop(
   callbacks.onAdapterModeChanged?.("sdk");
   
   let server: { url: string; close(): void; attached: boolean } | null = null;
+  
+  // Track active subscription for explicit cleanup
+  let activeSubscriptionController: AbortController | null = null;
+  let activeSessionId: string | null = null;
 
   function createTimeoutlessFetch() {
     return (req: any) => {
@@ -539,6 +620,57 @@ export async function runLoop(
       req.timeout = false;
       return fetch(req);
     };
+  }
+  
+  /**
+   * Cleanup function for graceful shutdown of sessions and server.
+   * Called on completion, error, or abort.
+   */
+  async function cleanupServerAndSessions(reason: string): Promise<void> {
+    log("loop", "Starting cleanup", { reason, hasServer: !!server, hasSession: !!activeSessionId });
+    
+    // Track whether we started the server (not attached to existing)
+    const shouldForceCleanup = server && !server.attached;
+    
+    // 1. Abort active event subscription first
+    if (activeSubscriptionController) {
+      log("loop", "Aborting active event subscription");
+      activeSubscriptionController.abort();
+      activeSubscriptionController = null;
+    }
+    
+    // 2. Give sessions a moment to clean up gracefully (100ms)
+    if (activeSessionId) {
+      log("loop", "Waiting for session cleanup", { sessionId: activeSessionId });
+      await Bun.sleep(100);
+      activeSessionId = null;
+    }
+    
+    // 3. Close the server
+    if (server) {
+      log("loop", "Closing server", { attached: server.attached });
+      try {
+        server.close();
+        log("loop", "Server close called successfully");
+      } catch (error) {
+        log("loop", "Error closing server", { 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+      }
+      
+      // 4. Wait briefly for graceful server shutdown (500ms)
+      await Bun.sleep(500);
+      
+      // 5. On Windows, force terminate any remaining processes (only if we started the server)
+      if (process.platform === "win32" && shouldForceCleanup) {
+        log("loop", "Windows: checking for orphaned opencode processes");
+        await forceTerminateOpencodeProcesses();
+      }
+      
+      server = null;
+    }
+    
+    log("loop", "Cleanup complete", { reason });
   }
 
   try {
@@ -638,6 +770,7 @@ export async function runLoop(
           throw new Error("Failed to create session");
         }
         const sessionId = sessionResult.data.id;
+        activeSessionId = sessionId; // Track for cleanup
         log("loop", "Session created", { sessionId });
 
         // Track whether current session is active (for steering mode guard)
@@ -670,8 +803,20 @@ export async function runLoop(
         });
 
         // Subscribe to events - the SSE connection is established when we start iterating
+        // Use a local AbortController so we can abort the subscription explicitly on completion
         log("loop", "Subscribing to events...");
-        const events = await client.event.subscribe({ signal });
+        activeSubscriptionController = new AbortController();
+        const subscriptionSignal = activeSubscriptionController.signal;
+        
+        // Also abort if parent signal is aborted
+        if (signal.aborted) {
+          activeSubscriptionController.abort();
+        }
+        signal.addEventListener("abort", () => {
+          activeSubscriptionController?.abort();
+        }, { once: true });
+        
+        const events = await client.event.subscribe({ signal: subscriptionSignal });
 
         let promptSent = false;
 
@@ -685,7 +830,7 @@ export async function runLoop(
         
         for await (const event of events.stream) {
           await waitWhilePaused(pauseState, callbacks, signal);
-          if (signal.aborted) break;
+          if (signal.aborted || subscriptionSignal.aborted) break;
 
           // When SSE connection is established, send the prompt
           // This ensures we don't miss any events due to race conditions
@@ -708,7 +853,7 @@ export async function runLoop(
             continue;
           }
 
-          if (signal.aborted) break;
+          if (signal.aborted || subscriptionSignal.aborted) break;
 
           // Filter events for current session ID
           if (event.type === "message.part.updated") {
@@ -835,6 +980,8 @@ export async function runLoop(
           if (event.type === "session.idle" && event.properties.sessionID === sessionId) {
             log("loop", "Session idle, breaking event loop");
             sessionActive = false;
+            activeSessionId = null; // Clear tracked session
+            activeSubscriptionController = null; // Clear subscription controller
             callbacks.onSessionEnded?.(sessionId);
             break;
           }
@@ -852,6 +999,8 @@ export async function runLoop(
             
             log("loop", "Session error", { errorMessage });
             sessionActive = false;
+            activeSessionId = null; // Clear tracked session
+            activeSubscriptionController = null; // Clear subscription controller
             callbacks.onSessionEnded?.(sessionId);
             throw new Error(errorMessage);
           }
@@ -910,12 +1059,8 @@ export async function runLoop(
     callbacks.onError(errorMessage);
     throw error;
   } finally {
-    log("loop", "Cleaning up...");
-    if (server) {
-      log("loop", "Closing server");
-      server.close();
-    }
-    log("loop", "Cleanup complete");
+    // Use the cleanup function for proper session and server termination
+    await cleanupServerAndSessions("finally-block");
   }
 }
 

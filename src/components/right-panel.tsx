@@ -90,6 +90,13 @@ function TaskDetails(props: { task: UiTask }) {
           <text fg={t().text}>{props.task.description ?? props.task.title}</text>
         </box>
       </scrollbox>
+
+      {/* Keybind hints */}
+      <box flexDirection="row" gap={2} marginTop={1}>
+        <text fg={t().textMuted}>[Shift+C] Show completed</text>
+        <text fg={t().textMuted}>[↑↓] Navigate</text>
+        <text fg={t().textMuted}>[?] Help</text>
+      </box>
     </box>
   );
 }

@@ -71,6 +71,9 @@ export function Header(props: HeaderProps) {
   const elapsedSeconds = createMemo(() => Math.floor(props.elapsedMs / 1000));
   const formattedTime = createMemo(() => formatElapsedTime(elapsedSeconds()));
   const formattedEta = createMemo(() => formatEta(props.eta));
+  const percentage = createMemo(() => 
+    props.totalTasks > 0 ? Math.round((props.tasksComplete / props.totalTasks) * 100) : 0
+  );
 
   // Simple task title width calculation:
   // Terminal width minus fixed elements (right side ~90 chars, left side ~25 chars)
@@ -141,7 +144,7 @@ export function Header(props: HeaderProps) {
             emptyColor={t().textMuted}
           />
           <text fg={t().text}>
-            {props.tasksComplete}/{props.totalTasks}
+            {props.tasksComplete}/{props.totalTasks} ({percentage()}%)
           </text>
         </box>
 

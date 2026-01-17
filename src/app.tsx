@@ -463,6 +463,30 @@ function AppContent(props: AppContentProps) {
   const theme = useTheme();
   const { isInputFocused: dialogInputFocused } = useInputFocus();
 
+  // Track shown milestones to avoid duplicate toasts
+  const shownMilestones = new Set<number>();
+
+  // Milestone celebration toasts at 25%, 50%, 75%, 100%
+  createEffect(() => {
+    const complete = props.state().tasksComplete;
+    const total = props.state().totalTasks;
+    if (total === 0) return;
+    
+    const pct = Math.floor((complete / total) * 100);
+    const milestones = [25, 50, 75, 100];
+    
+    for (const milestone of milestones) {
+      if (pct >= milestone && !shownMilestones.has(milestone)) {
+        shownMilestones.add(milestone);
+        toast.show({
+          variant: "success",
+          message: `🎉 ${milestone}% complete!`,
+        });
+        break; // Only show one toast at a time
+      }
+    }
+  });
+
   // Get theme colors reactively - call theme.theme() to access the resolved theme
   const t = () => theme.theme();
 
@@ -1377,6 +1401,9 @@ function AppContent(props: AppContentProps) {
             selectedIndex={selectedTaskIndex()}
             width={leftPanelWidth()}
             height={contentHeight()}
+            totalTasks={allUiTasks().length}
+            showingCompleted={props.showCompletedTasks()}
+            onSelect={(index) => setSelectedTaskIndex(index)}
           />
         )}
         <RightPanel
