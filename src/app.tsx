@@ -34,12 +34,15 @@ import { addSteeringContext, createDebugSession } from "./loop";
 import { createLoopState, type LoopStateStore } from "./hooks/useLoopState";
 import { createLoopStats, type LoopStatsStore } from "./hooks/useLoopStats";
 
+import { InterruptHandler } from "./lib/interrupt";
+
 type AppProps = {
   options: LoopOptions;
   persistedState: PersistedState;
   onQuit: () => void;
   iterationTimesRef?: number[];
   onKeyboardEvent?: () => void; // Called when first keyboard event is received
+  interruptHandler?: InterruptHandler;
 };
 
 /**
@@ -96,7 +99,9 @@ export type StartAppProps = {
   persistedState: PersistedState;
   onQuit: () => void;
   onKeyboardEvent?: () => void; // Called once when first keyboard event is received
+  interruptHandler?: InterruptHandler;
 };
+
 
 /**
  * Starts the TUI application and returns a promise that resolves when the app exits,
@@ -134,8 +139,10 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
         onQuit={onQuit}
         iterationTimesRef={iterationTimesRef}
         onKeyboardEvent={props.onKeyboardEvent}
+        interruptHandler={props.interruptHandler}
       />
     ),
+
     {
       // Lower FPS on Windows legacy consoles for better performance
       targetFps: isWindowsPlatform && !process.env.WT_SESSION ? 20 : 30,
@@ -418,8 +425,10 @@ export function App(props: AppProps) {
               setShowCompletedTasks={setShowCompletedTasks}
               loopStore={loopStore}
               loopStats={loopStats}
+              interruptHandler={props.interruptHandler}
             />
           </CommandProvider>
+
         </DialogProvider>
       </ToastProvider>
     </ThemeProvider>
@@ -450,10 +459,15 @@ type AppContentProps = {
   // Hook-based state stores (for gradual migration)
   loopStore: LoopStateStore;
   loopStats: LoopStatsStore;
+  interruptHandler?: InterruptHandler;
 };
+
+
+import { DialogConfirm } from "./ui/DialogConfirm";
 
 /**
  * Inner component that uses context hooks for dialogs and commands.
+
  * Separated from App to be inside the context providers.
  */
 function AppContent(props: AppContentProps) {
@@ -619,7 +633,34 @@ function AppContent(props: AppContentProps) {
   });
 
   const isCompact = createMemo(() => terminalDimensions().width < 80);
+
+  // Set up interrupt handler callbacks
+  createEffect(() => {
+    const ih = props.interruptHandler;
+    if (!ih) return;
+
+    ih.setOptions({
+      onShowDialog: () => {
+        dialog.show(() => (
+          <DialogConfirm
+            title="Quit Ralph?"
+            message="Are you sure you want to stop the automation loop?"
+            onConfirm={() => ih.confirm()}
+            onCancel={() => ih.cancel()}
+          />
+        ));
+      },
+      onHideDialog: () => {
+        // Dialog system handles hiding via pop() in onConfirm/onCancel
+      },
+      onConfirmed: async () => {
+        props.onQuit();
+      }
+    });
+  });
+
   const dashboardHeight = createMemo(() => (showDashboard() ? layout.progressDashboard.height : 0));
+
   const contentHeight = createMemo(() =>
     Math.max(
       1,
@@ -1230,13 +1271,19 @@ function AppContent(props: AppContentProps) {
 
     const key = e.name.toLowerCase();
 
-    // SAFETY VALVE: Ctrl+C always quits, even if a dialog is open/broken
-    // This ensures users can always exit the app without killing the terminal
+    // SAFETY VALVE: Ctrl+C triggers interruption handler
     if (key === "c" && e.ctrl) {
-      log("app", "Quit requested via Ctrl+C (safety valve)");
-      props.onQuit();
+      log("app", "Interruption requested via Ctrl+C");
+      if (props.interruptHandler) {
+        // Manually trigger SIGINT handling logic
+        // @ts-ignore - accessing private method for internal coordination
+        props.interruptHandler.handleSigint();
+      } else {
+        props.onQuit();
+      }
       return;
     }
+
 
     // Skip if any input is focused (dialogs, steering mode, etc.)
     if (isInputFocused()) {
@@ -1350,13 +1397,19 @@ function AppContent(props: AppContentProps) {
       }
     }
 
-    // q key: quit
+    // q key: quit (triggers interruption handler)
     // Phase 2.2: Use matchesKeybind for consistent key routing
     if (matchesKeybind(e, keymap.quit)) {
       log("app", "Quit requested via 'q' key");
-      props.onQuit();
+      if (props.interruptHandler) {
+        // @ts-ignore - accessing private method for internal coordination
+        props.interruptHandler.handleSigint();
+      } else {
+        props.onQuit();
+      }
       return;
     }
+
 
     // Note: Ctrl+C is handled above as a safety valve (before isInputFocused check)
   }, { debugLabel: "AppContent" });

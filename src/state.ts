@@ -90,6 +90,8 @@ export async function saveState(state: PersistedState): Promise<void> {
   await Bun.write(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
+import type { ErrorHandlingConfig, SessionConfig, UIConfig } from './lib/config/schema';
+
 export type LoopOptions = {
   planFile: string;
   progressFile?: string;
@@ -101,7 +103,11 @@ export type LoopOptions = {
   adapter?: string;
   agent?: string;
   debug?: boolean;
+  errorHandling?: ErrorHandlingConfig;
+  session?: SessionConfig;
+  ui?: UIConfig;
 };
+
 
 /**
  * Information about the current active session.

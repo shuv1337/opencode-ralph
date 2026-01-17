@@ -2,8 +2,12 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { extend } from "@opentui/solid";
-import { acquireLock, releaseLock } from "./lock";
+import { loadConfig } from "./lib/config/loader";
+import { type UserConfig } from "./lib/config/schema";
+import { SessionLock } from "./lib/lock";
+import { InterruptHandler } from "./lib/interrupt";
 import { loadState, saveState, PersistedState, LoopOptions, trimEvents, LoopState } from "./state";
+
 import { confirm } from "./prompt";
 import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
 import { startApp, destroyRenderer } from "./app";
@@ -76,42 +80,8 @@ const version: string =
     ? RALPH_VERSION
     : JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf-8")).version + "-dev";
 
-interface RalphConfig {
-  adapter?: string;
-  model?: string;
-  plan?: string;
-  progress?: string;
-  prompt?: string;
-  promptFile?: string;
-  server?: string;
-  serverTimeout?: number;
-  agent?: string;
-  headless?: boolean;
-  format?: string;
-  timestamps?: boolean;
-  yes?: boolean;
-  autoReset?: boolean;
-  maxIterations?: number;
-  maxTime?: number;
-  debug?: boolean;
-}
-
-function loadGlobalConfig(): RalphConfig {
-  const configPath = join(homedir(), ".config", "ralph", "config.json");
-  if (existsSync(configPath)) {
-    try {
-      const content = readFileSync(configPath, "utf-8");
-      return JSON.parse(content) as RalphConfig;
-    } catch {
-      // Silently ignore invalid config
-    }
-  }
-  return {};
-}
-
-const globalConfig = loadGlobalConfig();
-
 // When run via the bin wrapper, RALPH_USER_CWD contains the user's actual working directory
+
 // Change back to it so plan.md and other paths resolve correctly
 const userCwd = process.env.RALPH_USER_CWD;
 if (userCwd) {
@@ -316,6 +286,8 @@ async function main() {
     console.error("Unhandled rejection:", reason);
   });
 
+  const config = loadConfig();
+
   const argv = await yargs(hideBin(process.argv))
     .scriptName("ralph")
     .usage("$0 [options]")
@@ -338,39 +310,39 @@ async function main() {
       alias: "H",
       type: "boolean",
       description: "Run without the TUI (CI-friendly output)",
-      default: globalConfig.headless ?? false,
+      default: config.headless ?? false,
     })
     .option("plan", {
       alias: "p",
       type: "string",
       description: "Path to the plan file",
-      default: globalConfig.plan || "prd.json",
+      default: config.plan || "prd.json",
     })
     .option("progress", {
       type: "string",
       description: "Path to the progress log file",
-      default: globalConfig.progress || "progress.txt",
+      default: config.progress || "progress.txt",
     })
     .option("adapter", {
       type: "string",
       description: "Adapter to use (opencode-server, opencode-run, codex)",
-      default: globalConfig.adapter || "opencode-server",
+      default: config.adapter || "opencode-server",
     })
     .option("model", {
       alias: "m",
       type: "string",
       description: "Model to use (provider/model format)",
-      default: globalConfig.model || "opencode/claude-opus-4-5",
+      default: config.model || "opencode/claude-opus-4-5",
     })
     .option("prompt", {
       type: "string",
       description: "Custom prompt template (use {plan} and {progress} placeholders)",
-      default: globalConfig.prompt,
+      default: config.prompt,
     })
     .option("prompt-file", {
       type: "string",
       description: "Path to prompt file",
-      default: globalConfig.promptFile || ".ralph-prompt.md",
+      default: config.promptFile || ".ralph-prompt.md",
     })
     .option("reset", {
       alias: "r",
@@ -381,56 +353,62 @@ async function main() {
     .option("yes", {
       type: "boolean",
       description: "Auto-confirm prompts",
-      default: globalConfig.yes ?? false,
+      default: config.yes ?? false,
     })
     .option("auto-reset", {
       type: "boolean",
       description: "Auto-reset when prompts cannot be shown (use --no-auto-reset to disable)",
-      default: globalConfig.autoReset ?? true,
+      default: config.autoReset ?? true,
     })
     .option("format", {
       type: "string",
       description: "Headless output format (text, jsonl, json)",
       choices: ["text", "jsonl", "json"],
-      default: globalConfig.format || "text",
+      default: config.format || "text",
     })
     .option("timestamps", {
       type: "boolean",
       description: "Include timestamps in headless output",
-      default: globalConfig.timestamps ?? false,
+      default: config.timestamps ?? false,
     })
     .option("max-iterations", {
       type: "number",
       description: "Maximum iterations before aborting (headless)",
-      default: globalConfig.maxIterations,
+      default: config.maxIterations,
     })
     .option("max-time", {
       type: "number",
       description: "Maximum time in seconds before aborting (headless)",
-      default: globalConfig.maxTime,
+      default: config.maxTime,
     })
     .option("server", {
       alias: "s",
       type: "string",
       description: "URL of existing OpenCode server to connect to",
-      default: globalConfig.server,
+      default: config.server,
     })
     .option("server-timeout", {
       type: "number",
       description: "Health check timeout in ms for external server",
-      default: globalConfig.serverTimeout ?? 5000,
+      default: config.serverTimeout ?? 5000,
     })
     .option("agent", {
       alias: "a",
       type: "string",
       description: "Agent to use (e.g., 'build', 'plan', 'general')",
-      default: globalConfig.agent,
+      default: config.agent,
     })
     .option("debug", {
       alias: "d",
       type: "boolean",
       description: "Debug mode - manual session creation",
-      default: globalConfig.debug ?? false,
+      default: false,
+    })
+    .option("force", {
+      alias: "f",
+      type: "boolean",
+      description: "Force acquire session lock",
+      default: false,
     })
     .help("h")
     .alias("h", "help")
@@ -488,13 +466,20 @@ async function main() {
     return;
   }
 
-  // Acquire lock to prevent multiple instances
-  const lockAcquired = await acquireLock();
-  if (!lockAcquired) {
-    console.error("Another ralph instance is running");
-    process.exitCode = 1;
-    return;
+  // Initialize session lock
+  const lock = new SessionLock(process.cwd(), config.session?.lockFile || '.ralph-lock');
+  const lockResult = await lock.acquire(argv.force as boolean);
+  
+  if (!lockResult.acquired) {
+    console.error(`Error: ${lockResult.error}`);
+    if (lockResult.existingPid) {
+      console.error(`Existing instance PID: ${lockResult.existingPid}`);
+    }
+    console.error('Use --force to override (not recommended)');
+    process.exit(1);
   }
+
+  console.log(`Session locked (PID: ${process.pid})`);
 
   let exitCode = 0;
   
@@ -502,6 +487,7 @@ async function main() {
   let runLoopPromiseOuter: Promise<void> | null = null;
 
   try {
+
     // Load existing state if present
     const existingState = await loadState();
     
@@ -593,7 +579,11 @@ async function main() {
       adapter: argv.adapter,
       agent: argv.agent,
       debug: argv.debug,
+      errorHandling: config.errorHandling,
+      session: config.session,
+      ui: config.ui,
     };
+
 
     let adapterMode: "sdk" | "pty" =
       loopOptions.adapter && loopOptions.adapter !== "opencode-server" ? "pty" : "sdk";
@@ -630,10 +620,20 @@ async function main() {
       }
     }
 
-// Create abort controller for cancellation
+    // Create abort controller for cancellation
     const abortController = new AbortController();
 
+    // Initialize interruption handler
+    const interruptHandler = new InterruptHandler({
+      onForceQuit: () => {
+        log("main", "Force quit triggered");
+        process.exit(1);
+      },
+    });
+    interruptHandler.setup();
+
     // Keep event loop alive on Windows - stdin.resume() doesn't keep Bun's event loop active
+
     // This interval ensures the process stays alive until explicitly exited
     // On Windows, also send a minimal cursor save/restore sequence to keep console active
     const isWindowsPlatform = process.platform === "win32";
@@ -705,11 +705,12 @@ async function main() {
         }
       }
       
-      await releaseLock();
+      await lock.release();
       log("main", "cleanup() done");
     }
 
     // Fallback quit handler (useful if TUI key events fail)
+
     let quitRequested = false;
     async function requestQuit(source: string, payload?: unknown) {
       if (quitRequested) return;
@@ -884,7 +885,9 @@ async function main() {
         abortController.abort();
       },
       onKeyboardEvent, // Task 4.3: Callback to detect if OpenTUI keyboard is working
+      interruptHandler,
     });
+
     log("main", "TUI app started, state setters available");
 
     // Create batched updater for coalescing rapid state changes
@@ -1236,11 +1239,12 @@ async function main() {
     }
     
     destroyRenderer();
-    await releaseLock();
+    await lock.release();
     log("main", "Lock released");
     process.exitCode = exitCode;
   }
 }
+
 
 // Error handling wrapper for the main function
 main().catch((error) => {

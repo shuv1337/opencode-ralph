@@ -5,7 +5,10 @@ import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan, validatePlanCompletion } from "./plan.js";
 import { log } from "./util/log.js";
 
+import { ErrorHandler, ErrorContext } from "./lib/error-handler";
+
 const DEFAULT_PROMPT = `READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or steps as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.`;
+
 
 const steeringContext: string[] = [];
 
@@ -783,7 +786,12 @@ export async function runLoop(
     let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
     
     // Error tracking for exponential backoff (local, not persisted)
-    let errorCount = 0;
+    const errorHandler = new ErrorHandler(options.errorHandling || {
+      strategy: 'retry',
+      maxRetries: 3,
+      retryDelayMs: 5000,
+      backoffMultiplier: 2,
+    });
     
     log("loop", "Initial state", { iteration, previousCommitCount });
 
@@ -798,16 +806,6 @@ export async function runLoop(
       if (await waitWhilePaused(pauseState, callbacks, signal)) {
         if (signal.aborted) break;
         continue;
-      }
-
-      // Apply error backoff before iteration starts
-      if (errorCount > 0) {
-        const backoffMs = calculateBackoffMs(errorCount);
-        const retryAt = Date.now() + backoffMs;
-        log("loop", "Error backoff", { errorCount, backoffMs, retryAt });
-        callbacks.onBackoff?.(backoffMs, retryAt);
-        await Bun.sleep(backoffMs);
-        callbacks.onBackoffCleared?.();
       }
 
       // Iteration start (10.11)
@@ -1123,7 +1121,7 @@ export async function runLoop(
         callbacks.onDiffUpdated(diffStats.added, diffStats.removed);
 
         // Reset error count on successful iteration
-        errorCount = 0;
+        errorHandler.clearRetryCount();
       } catch (iterationError) {
         // Handle iteration errors with retry logic
         if (signal.aborted) {
@@ -1131,13 +1129,35 @@ export async function runLoop(
           throw iterationError;
         }
 
-        const errorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
-        errorCount++;
-        log("loop", "Error in iteration", { error: errorMessage, errorCount });
+        const context: ErrorContext = {
+          iteration,
+          error: iterationError as Error,
+          timestamp: new Date(),
+        };
+        
+        const result = errorHandler.handleError(context);
+        log("loop", "Error handled", { result });
+        
+        if (result.strategy === 'retry' && result.shouldContinue) {
+          callbacks.onError(iterationError instanceof Error ? iterationError.message : String(iterationError));
+          callbacks.onBackoff?.(result.delayMs, Date.now() + result.delayMs);
+          await Bun.sleep(result.delayMs);
+          callbacks.onBackoffCleared?.();
+          // Decrease iteration because we are retrying it
+          iteration--;
+          continue;
+        }
+        
+        const errorMessage = result.message;
+        log("loop", "Error in iteration", { error: errorMessage });
         callbacks.onError(errorMessage);
-        // Continue loop to retry with backoff
+        
+        if (result.strategy === 'abort') {
+          throw iterationError;
+        }
       }
     }
+
     
     log("loop", "Main loop exited", { aborted: signal.aborted });
   } catch (error) {
