@@ -132,34 +132,25 @@ export function LeftPanel(props: LeftPanelProps) {
       return;
     }
 
-    // Use queueMicrotask to ensure DOM is ready before scrolling
-    queueMicrotask(() => {
+    // Direct Sync Scrolling:
+    // The scroll position is directly tied to the selection index.
+    // This provides immediate, 1-to-1 visual feedback for every navigation step,
+    // ensuring the selected task is always at the top of the visible list
+    // (except when reaching the end of the task list).
+    const updateScroll = () => {
       if (!scrollboxRef) return;
 
-      const viewportHeight = scrollboxRef.viewport?.height ?? 0;
-      if (viewportHeight <= 0) return;
-
-      const currentTop = scrollboxRef.scrollTop;
-      const maxVisibleIndex = currentTop + viewportHeight - 1;
-      let nextTop = currentTop;
-
-      // Scroll up if selected is above viewport
-      if (selectedIndex < currentTop) {
-        nextTop = selectedIndex;
-      }
-      // Scroll down if selected is below viewport
-      else if (selectedIndex > maxVisibleIndex) {
-        nextTop = selectedIndex - viewportHeight + 1;
-      }
-
-      // Clamp to valid range
-      const maxScrollTop = Math.max(0, count - viewportHeight);
-      nextTop = Math.min(maxScrollTop, Math.max(0, nextTop));
+      const nextTop = selectedIndex;
 
       if (nextTop !== scrollboxRef.scrollTop) {
         scrollboxRef.scrollTop = nextTop;
+        // Force immediate render to keep scrollbar in perfect sync
+        scrollboxRef.requestRender();
       }
-    });
+    };
+
+    // Use queueMicrotask to defer until after Solid's render cycle
+    queueMicrotask(() => updateScroll());
   });
 
   return (

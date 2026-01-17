@@ -29,9 +29,7 @@ export const DEFAULT_PROTECTED_FILES = [
  * These are runtime files that should not be committed.
  */
 export const GITIGNORE_ENTRIES = [
-  ".ralph-state.json",
-  ".ralph-lock",
-  ".ralph-done",
+  ".ralph*",
 ] as const;
 
 /**

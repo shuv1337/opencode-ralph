@@ -536,19 +536,106 @@ async function forceTerminateOpencodeProcesses(): Promise<void> {
   if (process.platform !== "win32") {
     return;
   }
-  
+
   try {
-    // Use taskkill to force terminate any remaining opencode.exe processes
-    // The /F flag forces termination, /IM specifies image name
-    const proc = Bun.spawn(["taskkill", "/F", "/IM", "opencode.exe"], {
+    // Get list of all processes with ID, ParentID, Name using PowerShell
+    // Win32_Process is faster than Get-Process for parent/child relationships
+    const cmd = [
+      "powershell",
+      "-NoProfile",
+      "-Command",
+      "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Depth 1"
+    ];
+
+    const proc = Bun.spawn(cmd, {
       stdout: "pipe",
       stderr: "pipe",
     });
+
+    const output = await new Response(proc.stdout).text();
+    // Wait for process to exit
     await proc.exited;
-    log("loop", "Force terminated opencode.exe processes");
+
+    if (proc.exitCode !== 0) {
+       // Log but don't throw - this is best-effort cleanup
+       const error = await new Response(proc.stderr).text();
+       log("loop", "Failed to get process list for cleanup", { error });
+       return;
+    }
+
+    let processes: any[];
+    try {
+      processes = JSON.parse(output);
+      // ConvertTo-Json returns single object if only one result
+      if (!Array.isArray(processes)) {
+        processes = [processes];
+      }
+    } catch (e) {
+       log("loop", "Failed to parse process list JSON", { error: String(e) });
+       return;
+    }
+
+    const myPid = process.pid;
+    const parentMap = new Map<number, number>();
+    const opencodePids: number[] = [];
+
+    // Build process tree map and find targets
+    for (const p of processes) {
+      if (p && typeof p.ProcessId === 'number') {
+        parentMap.set(p.ProcessId, p.ParentProcessId);
+        // Case-insensitive check for opencode.exe
+        if (p.Name && typeof p.Name === 'string' && p.Name.toLowerCase() === 'opencode.exe') {
+          opencodePids.push(p.ProcessId);
+        }
+      }
+    }
+
+    const pidsToKill: number[] = [];
+
+    // Filter for descendants of current process
+    for (const pid of opencodePids) {
+      let current = pid;
+      let isDescendant = false;
+      const visited = new Set<number>(); // Prevent infinite loops
+
+      // Traverse up the parent chain
+      while (current && current !== 0 && !visited.has(current)) {
+        visited.add(current);
+        const parent = parentMap.get(current);
+        if (!parent) break;
+
+        if (parent === myPid) {
+          isDescendant = true;
+          break;
+        }
+        current = parent;
+      }
+
+      if (isDescendant) {
+        pidsToKill.push(pid);
+      }
+    }
+
+    if (pidsToKill.length > 0) {
+      log("loop", `Terminating ${pidsToKill.length} opencode.exe descendants`, { pids: pidsToKill });
+      
+      // Kill each identified descendant
+      for (const pid of pidsToKill) {
+        try {
+           // Use taskkill for robust termination on Windows
+           const killProc = Bun.spawn(["taskkill", "/F", "/PID", String(pid)], {
+             stdout: "ignore",
+             stderr: "ignore"
+           });
+           await killProc.exited;
+        } catch (e) {
+           log("loop", `Failed to kill PID ${pid}`, { error: String(e) });
+        }
+      }
+    }
+
   } catch (error) {
-    // Ignore errors - process may not exist or taskkill may fail
-    log("loop", "Force terminate failed (may be normal)", { 
+    log("loop", "Error during process cleanup", { 
       error: error instanceof Error ? error.message : String(error) 
     });
   }

@@ -323,9 +323,7 @@ describe("runInit", () => {
     const existingContent = `node_modules/
 .env
 # Ralph - AI agent loop files
-.ralph-state.json
-.ralph-lock
-.ralph-done
+.ralph*
 `;
     const gitignorePath = await tempDir.write(".gitignore", existingContent);
 
