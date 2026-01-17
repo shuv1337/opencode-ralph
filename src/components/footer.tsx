@@ -1,5 +1,5 @@
 import { useTheme } from "../context/ThemeContext";
-import { formatDuration, formatNumber } from "../util/time";
+import { formatDuration, formatNumber } from "../lib/time";
 import type { TokenUsage } from "../state";
 import { keyboardShortcuts, layout } from "./tui-theme";
 

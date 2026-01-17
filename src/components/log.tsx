@@ -1,6 +1,6 @@
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import { TOOL_ICONS } from "../lib/theme-colors";
-import { formatDuration } from "../util/time";
+import { formatDuration } from "../lib/time";
 import type { ToolEvent } from "../state";
 import { useTheme } from "../context/ThemeContext";
 import type { Theme } from "../lib/theme-resolver";

@@ -3,7 +3,7 @@ import { useTerminalDimensions } from "@opentui/solid";
 import { useTheme } from "../context/ThemeContext";
 import { formatElapsedTime, layout, statusIndicators } from "./tui-theme";
 import type { RalphStatus, UiTask } from "./tui-types";
-import { formatEta } from "../util/time";
+import { formatEta } from "../lib/time";
 
 export type HeaderProps = {
   status: RalphStatus;
