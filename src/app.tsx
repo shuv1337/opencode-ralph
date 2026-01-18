@@ -1454,6 +1454,16 @@ function AppContent(props: AppContentProps) {
       return;
     }
 
+    if (props.showTasks() && (key === "pageup")) {
+      setSelectedTaskIndex((prev) => Math.max(0, prev - 10));
+      return;
+    }
+
+    if (props.showTasks() && (key === "pagedown")) {
+      setSelectedTaskIndex((prev) => Math.min(uiTasks().length - 1, prev + 10));
+      return;
+    }
+
     // Shift+C: toggle completed tasks visibility (check before plain C)
     if (matchesKeybind(e, keymap.toggleCompleted)) {
       log("app", "Completed tasks toggled via Shift+C", { showCompleted: !props.showCompletedTasks() });
@@ -1586,6 +1596,7 @@ function AppContent(props: AppContentProps) {
         <RightPanel
           selectedTask={selectedTask()}
           viewMode={detailsViewMode()}
+          status={props.state().status}
           adapterMode={props.state().adapterMode ?? "sdk"}
           events={props.state().events}
           isIdle={props.state().isIdle}
