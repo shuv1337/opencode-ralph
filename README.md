@@ -340,6 +340,7 @@ Ralph writes operational learnings here. Future iterations read it.
 | `Shift+T` | Toggle tasks panel |
 | `o` | Toggle Details/Output view |
 | `d` | Toggle progress dashboard |
+| `x` | Toggle task status (staged) |
 | `?` | Show help overlay |
 | `↑` / `k` | Navigate up (in tasks panel) |
 | `↓` / `j` | Navigate down (in tasks panel) |

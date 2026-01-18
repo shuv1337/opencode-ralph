@@ -60,6 +60,12 @@ export const keymap = {
     key: "c",
     label: "C",
   } as KeybindDef,
+
+  /** Toggle status of selected task */
+  toggleTaskStatus: {
+    key: "x",
+    label: "X",
+  } as KeybindDef,
 } as const;
 
 /**
