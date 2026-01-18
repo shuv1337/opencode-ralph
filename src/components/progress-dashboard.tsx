@@ -1,6 +1,9 @@
 import { useTheme } from "../context/ThemeContext";
 import { layout, statusIndicators } from "./tui-theme";
+import { truncateText } from "../lib/text-utils";
 import type { RalphStatus, SandboxConfig } from "./tui-types";
+import { useTerminalDimensions } from "@opentui/solid";
+import { createMemo } from "solid-js";
 
 export type ProgressDashboardProps = {
   status: RalphStatus;
@@ -14,12 +17,6 @@ export type ProgressDashboardProps = {
   /** Sandbox configuration for display */
   sandboxConfig?: SandboxConfig;
 };
-
-function truncateText(text: string, maxWidth: number): string {
-  if (text.length <= maxWidth) return text;
-  if (maxWidth <= 3) return text.slice(0, maxWidth);
-  return text.slice(0, maxWidth - 1) + "…";
-}
 
 function getStatusDisplay(status: RalphStatus, theme: ReturnType<typeof useTheme>["theme"], taskId?: string) {
   const t = theme();
@@ -58,13 +55,29 @@ function getSandboxDisplay(sandboxConfig: SandboxConfig | undefined): string | n
 export function ProgressDashboard(props: ProgressDashboardProps) {
   const { theme } = useTheme();
   const t = () => theme();
+  const terminalDimensions = useTerminalDimensions();
+
+  const layoutMetrics = createMemo(() => {
+    const width = terminalDimensions().width;
+    const isCompact = width < 80;
+    
+    // Calculate available widths
+    const leftColMax = Math.floor(width * 0.4);
+    const rightColMax = Math.floor(width * 0.5);
+    
+    return {
+      isCompact,
+      leftColMax,
+      rightColMax
+    };
+  });
 
   const statusDisplay = () => getStatusDisplay(props.status, theme, props.currentTaskId);
 
   const taskDisplay = () => {
     if (!props.currentTaskTitle) return null;
     if (props.status !== "running") return null;
-    return truncateText(props.currentTaskTitle, 50);
+    return truncateText(props.currentTaskTitle, layoutMetrics().leftColMax);
   };
 
   const planLabel = () => (props.planName ? truncateText(props.planName, 30) : null);
@@ -85,34 +98,34 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
       <box flexDirection="row" justifyContent="space-between">
         <box flexDirection="row" gap={2} flexShrink={1}>
           <text fg={statusDisplay().color}>{statusDisplay().indicator}</text>
-          <text fg={statusDisplay().color}> {statusDisplay().label}</text>
-          {planLabel() && <text fg={t().primary}>{planLabel()}</text>}
+          <text fg={statusDisplay().color}> {truncateText(statusDisplay().label, layoutMetrics().leftColMax)}</text>
+          {planLabel() && !layoutMetrics().isCompact && <text fg={t().primary}>{planLabel()}</text>}
         </box>
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={1} flexShrink={0}>
           {props.currentModel && (
             <>
               <text fg={t().textMuted}>Model:</text>
-              <text fg={t().accent}> {props.currentModel}</text>
-              <text fg={t().textMuted}> │</text>
+              <text fg={t().accent}> {truncateText(props.currentModel, 20)}</text>
+              {!layoutMetrics().isCompact && <text fg={t().textMuted}> │</text>}
             </>
           )}
-          {props.agentName && (
+          {props.agentName && !layoutMetrics().isCompact && (
             <>
               <text fg={t().textMuted}>Agent:</text>
-              <text fg={t().secondary}> {props.agentName}</text>
+              <text fg={t().secondary}> {truncateText(props.agentName, 15)}</text>
             </>
           )}
-          {props.adapterName && (
+          {props.adapterName && !layoutMetrics().isCompact && (
             <>
               <text fg={t().textMuted}> Adapter:</text>
-              <text fg={t().primary}> {props.adapterName}</text>
+              <text fg={t().primary}> {truncateText(props.adapterName, 15)}</text>
             </>
           )}
         </box>
       </box>
 
       <box flexDirection="row" justifyContent="space-between" marginTop={0}>
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={1} flexShrink={1}>
           {taskDisplay() && (
             <>
               <text fg={t().textMuted}>Working on:</text>
@@ -121,9 +134,9 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
             </>
           )}
         </box>
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={1} flexShrink={0}>
           <text fg={t().textMuted}>Sandbox:</text>
-          <text fg={props.sandboxConfig?.enabled ? t().success : t().textMuted}> {sandboxLabel()}</text>
+          <text fg={props.sandboxConfig?.enabled ? t().success : t().textMuted}> {truncateText(sandboxLabel() || "", 20)}</text>
         </box>
       </box>
     </box>
