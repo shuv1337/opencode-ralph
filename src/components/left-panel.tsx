@@ -3,6 +3,7 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
 import { RenderMarkdownSegments, stripMarkdownBold, stripMarkdownLinks, getCompactTag } from "../lib/text-utils";
 import { taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
+import { StatusIndicator } from "./animated/status-indicator";
 import type { TaskStatus, UiTask } from "./tui-types";
 
 // =====================================================
@@ -178,12 +179,8 @@ function TaskRow(props: {
   const { theme } = useTheme();
   const t = () => theme();
 
-  const statusColor = () => getStatusColorFromTheme(props.task.status, theme);
-  const statusIndicator = () => taskStatusIndicators[props.task.status] || taskStatusIndicators.pending;
-
   const indentLevel = () => props.indentLevel ?? 0;
   const indent = () => "  ".repeat(indentLevel());
-  const indentWidth = () => indentLevel() * 2;
 
   const abbreviatedTag = () => getCompactTag(props.task.category);
 
@@ -194,11 +191,11 @@ function TaskRow(props: {
       // Compact: Indent + Status(1) + space(1) + ID + (space(1) + [T])? + space(1) + title
       const idLen = props.task.id.length;
       const tagLen = abbreviatedTag().length;
-      const prefixLen = indentWidth() + 1 + 1 + idLen + (tagLen > 0 ? 1 + tagLen : 0) + 1;
+      const prefixLen = (indentLevel() * 2) + 1 + 1 + idLen + (tagLen > 0 ? 1 + tagLen : 0) + 1;
       return Math.max(10, props.maxWidth - prefixLen - internalPadding);
     } else {
       // Dense: Indent + Title (indented by 2 more spaces)
-      return Math.max(10, props.maxWidth - 4 - indentWidth() - internalPadding);
+      return Math.max(10, props.maxWidth - 4 - (indentLevel() * 2) - internalPadding);
     }
   };
 
@@ -240,23 +237,13 @@ function TaskRow(props: {
     return `[${props.task.category}]`;
   };
 
-  const metadata = () => {
-    const cat = categoryTag();
-    const prio = priorityTag();
-    const combined = `${props.task.id} ${cat}${prio}`;
-    // Fixed width padding for the metadata column
-    return combined.padEnd(GUTTER_WIDTH - 2).slice(0, GUTTER_WIDTH - 2);
-  };
-
-  const metadataWidth = () => 2 + (GUTTER_WIDTH - 2) + 1; // status(1) + space(1) + metadata + space(1)
-
   const categoryColor = () => {
     if (props.isSelected) return t().background;
     return t().secondary; // Use theme's secondary color (Cyan/Blue-ish) for tags
   };
 
   // Content width available for description text after gutter and padding
-  const availableContentWidth = () => Math.max(10, props.maxWidth - (GUTTER_WIDTH + indentWidth()));
+  const availableContentWidth = () => Math.max(10, props.maxWidth - (GUTTER_WIDTH + (indentLevel() * 2)));
 
   const rowHeight = () => 
     calculateTaskHeight(props.task, availableContentWidth(), !!props.compactMode);
@@ -267,69 +254,7 @@ function TaskRow(props: {
   });
 
   return (
-    <box
-      width="100%"
-      height={rowHeight()}
-      flexDirection="column"
-      paddingLeft={1}
-      paddingRight={1}
-      backgroundColor={rowBg()}
-      onMouseDown={props.onSelect}
-    >
-      <Show when={props.compactMode} fallback={
-        <box flexDirection="column" width="100%" height={rowHeight()}>
-          {/* Dense Mode: Smart Hanging Indent (No Separators) */}
-          
-          <For each={wrappedLines()}>
-            {(line, lineIdx) => (
-              <box height={1} width="100%">
-                <text>
-                  <Show 
-                    when={lineIdx() === 0}
-                    fallback={
-                      /* Line 2+: Gutter Padding */
-                      <span style={{ fg: t().textMuted }}>{" ".repeat(indentWidth() + metadataWidth())}</span>
-                    }
-                  >
-                    {/* Line 1: [Indent][Status] [Metadata] [Extra Gap] */}
-                    <span style={{ fg: t().textMuted }}>{indent()}</span>
-                    <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
-                    <span style={{ fg: idColor() }}> {props.task.id} </span>
-                    <span style={{ fg: categoryColor() }}>{categoryTag()}</span>
-                    <span style={{ fg: idColor() }}>{priorityTag()} </span>
-                    <span style={{ fg: textColor() }}> </span>
-                  </Show>
-                  
-                  <RenderMarkdownSegments
-                    text={line}
-                    normalColor={textColor()}
-                    boldColor={boldColor()}
-                    tagColor={t().secondary}
-                  />
-                </text>
-              </box>
-            )}
-          </For>
-        </box>
-      }>
-        {/* Compact Mode: Current single-line layout */}
-        <text>
-          <span style={{ fg: t().textMuted }}>{indent()}</span>
-          <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
-          <span style={{ fg: idColor() }}> {props.task.id}</span>
-          <Show when={abbreviatedTag()}>
-            <span style={{ fg: categoryColor() }}> {abbreviatedTag()}</span>
-          </Show>
-          <span style={{ fg: textColor() }}> </span>
-          <RenderMarkdownSegments
-            text={truncateText(stripMarkdownLinks(props.task.title), titleWidth())}
-            normalColor={textColor()}
-            boldColor={boldColor()}
-            tagColor={t().secondary}
-          />
-        </text>
-      </Show>
-    </box>
+    <box width="100%" height={rowHeight()} flexDirection="column" paddingLeft={1} paddingRight={1} backgroundColor={rowBg()} onMouseDown={props.onSelect}><Show when={props.compactMode} fallback={<box flexDirection="column" width="100%" height={rowHeight()}><For each={wrappedLines()}>{(line, lineIdx) => (<box height={1} width="100%"><text><Show when={lineIdx() === 0} fallback={<span style={{ fg: t().textMuted }}>{" ".repeat((indentLevel() * 2) + 2 + (GUTTER_WIDTH - 2) + 1)}</span>}><span style={{ fg: t().textMuted }}>{indent()}</span><StatusIndicator status={props.task.status} type="task" animated={props.isSelected} wrap={false} /><span style={{ fg: idColor() }}> {props.task.id} </span><span style={{ fg: categoryColor() }}>{categoryTag()}</span><span style={{ fg: idColor() }}>{priorityTag()} </span><span style={{ fg: textColor() }}> </span></Show><RenderMarkdownSegments text={line} normalColor={textColor()} boldColor={boldColor()} tagColor={t().secondary}/></text></box>)}</For></box>}><text><span style={{ fg: t().textMuted }}>{indent()}</span><StatusIndicator status={props.task.status} type="task" animated={props.isSelected} wrap={false} /><span style={{ fg: idColor() }}> {props.task.id}</span><Show when={abbreviatedTag()}><span style={{ fg: categoryColor() }}> {abbreviatedTag()}</span></Show><span style={{ fg: textColor() }}> </span><RenderMarkdownSegments text={truncateText(stripMarkdownLinks(props.task.title), titleWidth())} normalColor={textColor()} boldColor={boldColor()} tagColor={t().secondary}/></text></Show></box>
   );
 }
 
@@ -367,7 +292,6 @@ export function LeftPanel(props: LeftPanelProps) {
   createEffect(() => {
     const selectedIndex = props.selectedIndex;
     const count = taskCount();
-    const _height = props.height;
 
     if (!scrollboxRef || count === 0) {
       if (scrollboxRef) {
@@ -408,58 +332,6 @@ export function LeftPanel(props: LeftPanelProps) {
   });
 
   return (
-    <box
-      title="Tasks"
-      width={props.width}
-      flexShrink={0}
-      flexDirection="column"
-      backgroundColor={t().background}
-      border
-      borderColor={t().primary}
-    >
-      <scrollbox
-        ref={(el) => {
-          scrollboxRef = el;
-        }}
-        flexGrow={1}
-        width="100%"
-        stickyScroll={false}
-        rootOptions={{
-          backgroundColor: t().background,
-        }}
-        viewportOptions={{
-          backgroundColor: t().background,
-        }}
-        verticalScrollbarOptions={{
-          visible: true,
-          trackOptions: {
-            backgroundColor: t().border,
-          },
-        }}
-      >
-        <Show
-          when={taskCount() > 0}
-          fallback={
-            <box padding={1} flexDirection="column">
-              <text fg={t().success}>{emptyMessage()}</text>
-            </box>
-          }
-        >
-          <For each={props.tasks}>
-            {(task, index) => (
-              <TaskRow
-                task={task}
-                isSelected={index() === props.selectedIndex}
-                maxWidth={maxRowWidth()}
-                index={index()}
-                indentLevel={indentMap().get(task.id) ?? 0}
-                compactMode={props.compactMode}
-                onSelect={() => props.onSelect?.(index())}
-              />
-            )}
-          </For>
-        </Show>
-      </scrollbox>
-    </box>
+    <box title="Tasks" width={props.width} flexShrink={0} flexDirection="column" backgroundColor={t().background} border borderColor={t().primary}><scrollbox ref={(el) => { scrollboxRef = el; }} flexGrow={1} width="100%" stickyScroll={false} rootOptions={{ backgroundColor: t().background, }} viewportOptions={{ backgroundColor: t().background, }} verticalScrollbarOptions={{ visible: true, trackOptions: { backgroundColor: t().border, }, }}><Show when={taskCount() > 0} fallback={<box padding={1} flexDirection="column"><text fg={t().success}>{emptyMessage()}</text></box>}><For each={props.tasks}>{(task, index) => (<TaskRow task={task} isSelected={index() === props.selectedIndex} maxWidth={maxRowWidth()} index={index()} indentLevel={indentMap().get(task.id) ?? 0} compactMode={props.compactMode} onSelect={() => props.onSelect?.(index())}/>)}</For></Show></scrollbox></box>
   );
 }

@@ -4,6 +4,7 @@ import { useTheme } from "../context/ThemeContext";
 import { renderMarkdownBold, stripMarkdownBold, truncateText } from "../lib/text-utils";
 import { formatElapsedTime, layout, statusIndicators } from "./tui-theme";
 import type { RalphStatus, UiTask, RateLimitState, ActiveAgentState, SandboxConfig } from "./tui-types";
+import { StatusIndicator } from "./animated/status-indicator";
 import { formatEta } from "../lib/time";
 
 // =====================================================
@@ -158,10 +159,7 @@ function MiniProgressBar(props: {
   const emptyWidth = () => props.width - filledWidth();
 
   return (
-    <box flexDirection="row">
-      <text fg={props.filledColor}>{"▓".repeat(filledWidth())}</text>
-      <text fg={props.emptyColor}>{"░".repeat(emptyWidth())}</text>
-    </box>
+    <box flexDirection="row"><text fg={props.filledColor}>{"▓".repeat(filledWidth())}</text><text fg={props.emptyColor}>{"░".repeat(emptyWidth())}</text></box>
   );
 }
 
@@ -292,149 +290,6 @@ export function Header(props: HeaderProps) {
   });
 
   return (
-    <box
-      width="100%"
-      height={headerHeight()}
-      flexDirection="column"
-      backgroundColor={t().backgroundPanel}
-    >
-      {/* Main header row */}
-      <box
-        width="100%"
-        height={1}
-        flexDirection="row"
-        justifyContent="space-between"
-        alignItems="center"
-        paddingLeft={1}
-        paddingRight={1}
-      >
-        <box flexDirection="row" gap={1} flexShrink={1}>
-          <text fg={t().primary}>◆ OpenRalph</text>
-          <text fg={t().textMuted}>│</text>
-          {props.debug && (
-            <>
-              <text fg={t().warning}>[DEBUG]</text>
-              <text fg={t().textMuted}> </text>
-            </>
-          )}
-          <text fg={statusDisplay().color}>{statusDisplay().indicator}</text>
-          {!layoutMetrics().hideStatusLabel && (
-            <text fg={statusDisplay().color}> {statusDisplay().label}</text>
-          )}
-          {taskLabel() && (
-            <>
-              <text fg={t().textMuted}> → </text>
-              {renderedTaskLabel()}
-            </>
-          )}
-        </box>
-
-        <box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>
-          {/* Agent display with rate limit icon */}
-          {showAgentDisplay() && (
-            <text fg={agentDisplay().color}>
-              {agentDisplay().showRateLimitIcon && <span>⏳ </span>}
-              {truncateText(agentDisplay().displayName, layoutMetrics().metadataMaxWidth)}
-            </text>
-          )}
-
-          {/* NEW: Separator between Agent and Model if both present and distinct */}
-          {showAgentDisplay() && modelDisplay() && (
-            <text fg={t().textMuted}>│</text>
-          )}
-
-          {/* NEW: Model display */}
-          {modelDisplay() && (
-            <text fg={t().accent}>
-              {truncateText(modelDisplay()!.display, layoutMetrics().metadataMaxWidth)}
-            </text>
-          )}
-
-          {/* NEW: Tracker name */}
-          {props.trackerName && !layoutMetrics().isCompact && (
-            <text fg={t().secondary}>{props.trackerName}</text>
-          )}
-
-          {/* NEW: Sandbox indicator */}
-          {sandboxDisplay() && !layoutMetrics().isCompact && (
-            <text fg={t().info}>🔒 {sandboxDisplay()}</text>
-          )}
-
-          {/* Fallback to original agent/adapter display if new props not used */}
-          {!agentDisplay().displayName && (props.agentName || props.adapterName) && (
-            <box flexDirection="row" gap={1}>
-              {props.agentName && (
-                <text fg={t().secondary}>
-                  {truncateText(props.agentName, layoutMetrics().metadataMaxWidth)}
-                </text>
-              )}
-              {props.agentName && props.adapterName && <text fg={t().textMuted}>/</text>}
-              {props.adapterName && (
-                <text fg={t().primary}>
-                  {truncateText(props.adapterName, layoutMetrics().metadataMaxWidth)}
-                </text>
-              )}
-            </box>
-          )}
-
-          {/* Progress section */}
-          <box flexDirection="row" gap={1} alignItems="center">
-            {props.planError ? (
-              <text fg={t().error}>⚠️ Plan Error</text>
-            ) : (
-              <>
-                <MiniProgressBar
-                  completed={props.tasksComplete}
-                  total={props.totalTasks}
-                  width={layoutMetrics().isCompact ? 4 : 8}
-                  filledColor={t().success}
-                  emptyColor={t().textMuted}
-                />
-                {!layoutMetrics().hideProgressText && (
-                  <text fg={t().text}>
-                    {props.tasksComplete}/{props.totalTasks} ({percentage()}%)
-                  </text>
-                )}
-              </>
-            )}
-          </box>
-
-          {/* NEW: Enhanced iteration counter */}
-          {!layoutMetrics().hideIteration && (
-            <text fg={t().textMuted}>{iterationDisplay()}</text>
-          )}
-
-          {/* Time and ETA */}
-          {!layoutMetrics().hideTime && (
-            <box flexDirection="row" gap={1} alignItems="center">
-              <text fg={t().textMuted}>⏱</text>
-              <text fg={t().text}>{formattedTime()}</text>
-            </box>
-          )}
-
-          {!layoutMetrics().hideEta && (
-            <text fg={t().textMuted}>{formattedEta()}</text>
-          )}
-        </box>
-      </box>
-
-      {/* NEW: Status line row - shown when primary agent is rate limited */}
-      {agentDisplay().statusLine && (
-        <box
-          width="100%"
-          height={1}
-          flexDirection="row"
-          justifyContent="center"
-          alignItems="center"
-          paddingLeft={1}
-          paddingRight={1}
-        >
-          <text fg={t().warning}>
-            <span>⏳ </span>
-            <span>{truncateText(agentDisplay().statusLine!, terminalDimensions().width - 6)}</span>
-          </text>
-        </box>
-      )}
-    </box>
+    <box width="100%" height={headerHeight()} flexDirection="column" backgroundColor={t().backgroundPanel}><box width="100%" height={1} flexDirection="row" justifyContent="space-between" alignItems="center" paddingLeft={1} paddingRight={1}><box flexDirection="row" gap={1} flexShrink={1}><text fg={t().primary}>◆ OpenRalph</text><text fg={t().textMuted}>│</text>{props.debug && <><text fg={t().warning}>[DEBUG]</text><text fg={t().textMuted}> </text></>}<StatusIndicator status={props.status} type="ralph" animated={true} />{!layoutMetrics().hideStatusLabel && <text fg={statusDisplay().color}> {statusDisplay().label}</text>}{taskLabel() && <><text fg={t().textMuted}> → </text>{renderedTaskLabel()}</>}</box><box flexDirection="row" gap={1} alignItems="center" flexShrink={0}>{showAgentDisplay() && <text fg={agentDisplay().color}>{agentDisplay().showRateLimitIcon && <span>⏳ </span>}{truncateText(agentDisplay().displayName, layoutMetrics().metadataMaxWidth)}</text>}{showAgentDisplay() && modelDisplay() && <text fg={t().textMuted}>│</text>}{modelDisplay() && <text fg={t().accent}>{truncateText(modelDisplay()!.display, layoutMetrics().metadataMaxWidth)}</text>}{props.trackerName && !layoutMetrics().isCompact && <text fg={t().secondary}>{props.trackerName}</text>}{sandboxDisplay() && !layoutMetrics().isCompact && <text fg={t().info}>🔒 {sandboxDisplay()}</text>}{!agentDisplay().displayName && (props.agentName || props.adapterName) && <box flexDirection="row" gap={1}>{props.agentName && <text fg={t().secondary}>{truncateText(props.agentName, layoutMetrics().metadataMaxWidth)}</text>}{props.agentName && props.adapterName && <text fg={t().textMuted}>/</text>}{props.adapterName && <text fg={t().primary}>{truncateText(props.adapterName, layoutMetrics().metadataMaxWidth)}</text>}</box>}<box flexDirection="row" gap={1} alignItems="center">{props.planError ? <text fg={t().error}>⚠️ Plan Error</text> : <><MiniProgressBar completed={props.tasksComplete} total={props.totalTasks} width={layoutMetrics().isCompact ? 4 : 8} filledColor={t().success} emptyColor={t().textMuted} />{!layoutMetrics().hideProgressText && <text fg={t().text}>{props.tasksComplete}/{props.totalTasks} ({percentage()}%)</text>}</>}</box>{!layoutMetrics().hideIteration && <text fg={t().textMuted}>{iterationDisplay()}</text>}{!layoutMetrics().hideTime && <box flexDirection="row" gap={1} alignItems="center"><text fg={t().textMuted}>⏱</text><text fg={t().text}>{formattedTime()}</text></box>}{!layoutMetrics().hideEta && <text fg={t().textMuted}>{formattedEta()}</text>}</box></box>{agentDisplay().statusLine && <box width="100%" height={1} flexDirection="row" justifyContent="center" alignItems="center" paddingLeft={1} paddingRight={1}><text fg={t().warning}><span>⏳ </span><span>{truncateText(agentDisplay().statusLine!, terminalDimensions().width - 6)}</span></text></box>}</box>
   );
 }
