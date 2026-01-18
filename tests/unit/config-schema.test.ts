@@ -124,4 +124,21 @@ describe("ConfigSchema with fallbackAgents", () => {
       expect(result.data.fallbackAgents).toEqual({});
     }
   });
+
+  it("should validate UI buffer configurations", () => {
+    const config = {
+      ui: {
+        maxTerminalBuffer: 50000,
+        maxParsedOutputSize: 200000,
+        outputBufferTrimStrategy: "head"
+      }
+    };
+    const result = ConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.ui.maxTerminalBuffer).toBe(50000);
+      expect(result.data.ui.maxParsedOutputSize).toBe(200000);
+      expect(result.data.ui.outputBufferTrimStrategy).toBe("head");
+    }
+  });
 });

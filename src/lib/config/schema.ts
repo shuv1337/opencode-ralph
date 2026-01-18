@@ -17,6 +17,10 @@ export const UISchema = z.object({
   theme: z.string().default('default'),
   showProgressDashboard: z.boolean().default(true),
   compactMode: z.boolean().default(false),
+  // Buffer size configuration
+  maxTerminalBuffer: z.number().int().min(1000).max(500000).default(20000),
+  maxParsedOutputSize: z.number().int().min(1000).max(1000000).default(100000),
+  outputBufferTrimStrategy: z.enum(['head', 'tail']).default('tail'),
 });
 
 /**
@@ -71,6 +75,9 @@ export const ConfigSchema = z.object({
     theme: 'default',
     showProgressDashboard: true,
     compactMode: false,
+    maxTerminalBuffer: 20000,
+    maxParsedOutputSize: 100000,
+    outputBufferTrimStrategy: 'tail',
   }),
 
   // Rate limit fallback agents
