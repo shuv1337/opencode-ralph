@@ -1,4 +1,4 @@
-import { Show, For, createMemo } from "solid-js";
+import { Show, For, createMemo, Switch, Match } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
 import { renderMarkdownBold } from "../lib/text-utils";
 import { formatViewMode, taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
@@ -95,7 +95,9 @@ export type RightPanelProps = {
   terminalBuffer?: string;
   terminalCols: number;
   terminalRows: number;
+  promptText?: string;
 };
+
 
 // =====================================================
 // STATUS COLOR WITH FULL STATUS SUPPORT
@@ -318,6 +320,41 @@ function OutputView(props: {
   );
 }
 
+function PromptView(props: { promptText?: string; task?: UiTask | null }) {
+  const { theme } = useTheme();
+  const t = () => theme();
+
+  const renderedPrompt = createMemo(() =>
+    renderMarkdownBold(props.promptText || "No prompt available", t().text, t().accent)
+  );
+
+  return (
+    <box flexDirection="column" padding={1} flexGrow={1}>
+      <box marginBottom={1}>
+        <text fg={t().primary}>System Prompt Preview</text>
+      </box>
+      <Show when={props.task}>
+        <box marginBottom={1}>
+          <text fg={t().textMuted}>Target Task: </text>
+          <text fg={t().accent}>{props.task?.title}</text>
+        </box>
+      </Show>
+      <scrollbox
+        flexGrow={1}
+        border
+        borderColor={t().borderSubtle}
+        backgroundColor={t().backgroundElement}
+        padding={1}
+      >
+        {renderedPrompt()}
+      </scrollbox>
+      <box marginTop={1}>
+        <text fg={t().textMuted}>Note: Prompt includes dynamic context (plan, progress).</text>
+      </box>
+    </box>
+  );
+}
+
 export function RightPanel(props: RightPanelProps) {
   const { theme } = useTheme();
   const t = () => theme();
@@ -335,24 +372,29 @@ export function RightPanel(props: RightPanelProps) {
       border
       borderColor={t().border}
     >
-      <Show
-        when={props.viewMode === "output"}
+      <Switch
         fallback={
           <Show when={props.selectedTask} fallback={<NoSelection />}>
             {(task) => <TaskDetails task={task()} />}
           </Show>
         }
       >
-        <OutputView
-          adapterMode={props.adapterMode}
-          events={props.events}
-          isIdle={props.isIdle}
-          errorRetryAt={props.errorRetryAt}
-          terminalBuffer={props.terminalBuffer}
-          terminalCols={props.terminalCols}
-          terminalRows={props.terminalRows}
-        />
-      </Show>
+        <Match when={props.viewMode === "output"}>
+          <OutputView
+            adapterMode={props.adapterMode}
+            events={props.events}
+            isIdle={props.isIdle}
+            errorRetryAt={props.errorRetryAt}
+            terminalBuffer={props.terminalBuffer}
+            terminalCols={props.terminalCols}
+            terminalRows={props.terminalRows}
+          />
+        </Match>
+        <Match when={props.viewMode === "prompt"}>
+          <PromptView promptText={props.promptText} task={props.selectedTask} />
+        </Match>
+      </Switch>
     </box>
   );
 }
+

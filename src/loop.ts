@@ -6,6 +6,7 @@ import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan, validatePlanCompletion } from "./plan.js";
 import { log } from "./lib/log";
 import { rateLimitDetector, getFallbackAgent } from "./lib/rate-limit";
+import { stripAnsiCodes } from "./lib/ansi";
 
 
 import { ErrorHandler, ErrorContext } from "./lib/error-handler";
@@ -500,6 +501,8 @@ export type LoopCallbacks = {
   onRateLimit?: (state: RateLimitState) => void;
   /** Called when active agent state changes */
   onActiveAgent?: (state: ActiveAgentState) => void;
+  /** Called when the full system prompt is generated for the current iteration */
+  onPrompt?: (prompt: string) => void;
 };
 
 type PauseState = {
@@ -804,20 +807,24 @@ export async function runLoop(
 
     // Fetch sandbox info from opencode project info
     try {
-      const projectResult = await client.project.current();
-      if (projectResult.data) {
-        const project = projectResult.data as any;
-        const currentDir = process.cwd();
-        const isSandbox = project.sandboxes?.some((s: string) => 
-          s === currentDir || 
-          s.replace(/\\/g, '/') === currentDir.replace(/\\/g, '/')
-        );
-        
-        callbacks.onSandbox?.({
-          enabled: isSandbox,
-          mode: isSandbox ? "sandbox" : "local",
-        });
-        log("loop", "Sandbox info detected", { isSandbox, mode: isSandbox ? "sandbox" : "local" });
+      if (client.project?.current) {
+        const projectResult = await client.project.current();
+        if (projectResult.data) {
+          const project = projectResult.data as any;
+          const currentDir = process.cwd();
+          const isSandbox = project.sandboxes?.some((s: string) => 
+            s === currentDir || 
+            s.replace(/\\/g, '/') === currentDir.replace(/\\/g, '/')
+          );
+          
+          callbacks.onSandbox?.({
+            enabled: isSandbox,
+            mode: isSandbox ? "sandbox" : "local",
+          });
+          log("loop", "Sandbox info detected", { isSandbox, mode: isSandbox ? "sandbox" : "local" });
+        }
+      } else {
+        log("loop", "Sandbox detection skipped: client.project.current not available in SDK");
       }
     } catch (e) {
       log("loop", "Failed to fetch project info for sandbox detection", { error: String(e) });
@@ -894,6 +901,7 @@ export async function runLoop(
 
         // Parse model and build prompt before session creation
         const promptText = applySteeringContext(await buildPrompt(options));
+        callbacks.onPrompt?.(promptText);
         const { providerID, modelID } = parseModel(currentModel);
 
         // Create session (10.13)
@@ -1410,8 +1418,10 @@ async function runPtyLoop(
             receivedOutput = true;
             callbacks.onIdleChanged(false);
           }
-          accumulatedOutput += event.data;
-          callbacks.onRawOutput?.(event.data);
+          // Strip ANSI codes to prevent rendering artifacts in TUI
+          const sanitized = stripAnsiCodes(event.data);
+          accumulatedOutput += sanitized;
+          callbacks.onRawOutput?.(sanitized);
         } else if (event.type === "exit") {
           sessionActive = false;
           callbacks.onSessionEnded?.(sessionId);

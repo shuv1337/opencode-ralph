@@ -1424,9 +1424,14 @@ function AppContent(props: AppContentProps) {
     }
 
     if (key === "o" && !e.ctrl && !e.meta) {
-      setDetailsViewMode((mode) => (mode === "details" ? "output" : "details"));
+      setDetailsViewMode((mode) => {
+        if (mode === "details") return "output";
+        if (mode === "output") return "prompt";
+        return "details";
+      });
       return;
     }
+
 
     // ESC key: close tasks panel if open
     if (key === "escape" && props.showTasks()) {
@@ -1588,7 +1593,9 @@ function AppContent(props: AppContentProps) {
           terminalBuffer={props.state().terminalBuffer || ""}
           terminalCols={rightPanelCols()}
           terminalRows={rightPanelRows()}
+          promptText={props.state().promptText}
         />
+
       </box>
       <Footer
         commits={props.state().commits}

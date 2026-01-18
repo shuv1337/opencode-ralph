@@ -159,5 +159,11 @@ export function formatElapsedTime(seconds: number): string {
 }
 
 export function formatViewMode(viewMode: DetailsViewMode): string {
-  return viewMode === "details" ? "[Details]" : "[Output]";
+  switch (viewMode) {
+    case "details": return "[Details]";
+    case "output": return "[Output]";
+    case "prompt": return "[Prompt]";
+    default: return "";
+  }
 }
+

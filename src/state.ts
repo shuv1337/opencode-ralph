@@ -51,6 +51,8 @@ export type LoopState = {
   activeAgentState?: ActiveAgentState;
   /** Rate limit state for fallback display */
   rateLimitState?: RateLimitState;
+  /** System prompt text for display in prompt view mode */
+  promptText?: string;
 };
 
 export type ToolEvent = {

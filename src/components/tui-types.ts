@@ -48,7 +48,7 @@ export type TaskStatus =
   | "error"
   | "closed";
 
-export type DetailsViewMode = "details" | "output";
+export type DetailsViewMode = "details" | "output" | "prompt";
 
 /**
  * UI representation of a task with optional hierarchy and metadata.

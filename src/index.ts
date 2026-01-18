@@ -908,7 +908,8 @@ async function main() {
     // Create batched updater for coalescing rapid state changes
     // Use 100ms debounce for better batching during high event throughput
     const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 100);
-    const MAX_TERMINAL_BUFFER = 20000;
+    const MAX_TERMINAL_BUFFER = config.ui.maxTerminalBuffer;
+
 
     stateSetters.setState((prev) => ({
       ...prev,
@@ -1234,6 +1235,12 @@ async function main() {
         stateSetters.setState((prev) => ({
           ...prev,
           activeAgentState,
+        }));
+      },
+      onPrompt: (prompt) => {
+        stateSetters.setState((prev) => ({
+          ...prev,
+          promptText: prompt,
         }));
       },
     }, abortController.signal).catch((error) => {
