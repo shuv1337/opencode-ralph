@@ -1,18 +1,9 @@
+import type { TaskStatus } from "../types/task-status";
+export type { TaskStatus };
+
 /**
  * Ralph execution status types.
  * Adopted from Ralph TUI with additional granularity for UI feedback.
- * 
- * - 'starting': Application initializing
- * - 'ready': Waiting for user to start execution (interactive mode)
- * - 'running': Actively executing iterations (generic running state)
- * - 'selecting': Selecting next task to work on
- * - 'executing': Executing agent on current task
- * - 'pausing': Pause requested, waiting for current iteration to complete
- * - 'paused': Paused, waiting to resume
- * - 'stopped': Not running (generic)
- * - 'complete': All tasks finished successfully
- * - 'idle': Stopped, no more tasks available
- * - 'error': Stopped due to error
  */
 export type RalphStatus =
   | "starting"
@@ -26,27 +17,6 @@ export type RalphStatus =
   | "complete"
   | "idle"
   | "error";
-
-/**
- * Task status types matching Ralph TUI acceptance criteria.
- * Provides 7 distinct states for granular task lifecycle tracking.
- * 
- * - 'done': Task completed in current session (green checkmark)
- * - 'active': Task currently being worked on (blue arrow)
- * - 'actionable': Task ready to work on with no blocking dependencies (green arrow)
- * - 'pending': Task waiting to be worked on (grey circle)
- * - 'blocked': Task blocked by dependencies (red symbol)
- * - 'error': Task execution failed (red X)
- * - 'closed': Previously completed task (greyed out checkmark for historical tasks)
- */
-export type TaskStatus =
-  | "done"
-  | "active"
-  | "actionable"
-  | "pending"
-  | "blocked"
-  | "error"
-  | "closed";
 
 export type DetailsViewMode = "details" | "output" | "prompt";
 
