@@ -219,41 +219,53 @@ export function Header(props: HeaderProps) {
   const layoutMetrics = createMemo(() => {
     const width = terminalDimensions().width;
     
-    // 1. Calculate essential widths of fixed components
-    // Left: "◆ OpenRalph " (12) + "│ " (2) + "[DEBUG] " (8) + Indicator (2) + Label
-    const statusPart = getStatusDisplay(props.status, theme);
-    const leftEssential = 12 + (props.debug ? 8 : 0) + 2 + 2 + statusPart.label.length;
-    
-    // Right: Progress (8+1+15) + Iteration (15) + Time (10) + ETA (10) + gaps (6)
-    const rightEssential = 24 + 15 + 10 + 10 + 6;
-    
-    const available = width - leftEssential - rightEssential - 6; // safety margin + paddings
-    
-    // 2. Define priority hiding based on terminal width
+    // 1. Define priority hiding based on terminal width
     const hideEta = width < 110;
     const hideTime = width < 100;
     const hideIteration = width < 90;
     const hideProgressText = width < 80;
     const hideStatusLabel = width < 70;
+    const isCompact = width < 120;
+
+    // 2. Calculate essential widths of fixed components
+    // Left: "◆ OpenRalph " (12) + "│ " (2) + "[DEBUG] " (8) + Indicator (2) + Label
+    const statusPart = getStatusDisplay(props.status, theme);
+    const leftEssential = 12 + (props.debug ? 8 : 0) + 2 + 2 + (hideStatusLabel ? 0 : statusPart.label.length);
     
-    // 3. Distribute available space between Task Title and Metadata (Agent/Model)
-    // Priority: Task Title gets 60%, Metadata gets 40%
-    // Metadata includes Agent, Model, Tracker, Sandbox
-    const taskWeight = 0.6;
-    const metaWeight = 0.4;
+    // 3. Calculate actual right-side width based on what's visible
+    let rightUsed = 6; // base gaps and padding
+    if (props.planError) {
+      rightUsed += 13; // "⚠️ Plan Error"
+    } else {
+      rightUsed += isCompact ? 4 : 8; // MiniProgressBar
+      if (!hideProgressText) rightUsed += 14; // " XX/XX (100%)"
+    }
+    if (!hideIteration) rightUsed += 16;
+    if (!hideTime) rightUsed += 11;
+    if (!hideEta) rightUsed += 11;
+
+    // 4. Determine available space for Task and Metadata
+    // Subtract essential parts and common separators (like "│" and "→")
+    const available = Math.max(0, width - leftEssential - rightUsed - 8);
     
-    const taskMax = Math.max(10, Math.floor(available * taskWeight));
-    const metaMax = Math.max(10, Math.floor(available * metaWeight));
+    // 5. Distribute available space between Task Title and Metadata (Agent/Model)
+    // We prioritize Metadata (Agent/Model) more than before to ensure critical info is visible
+    // In wide terminals, we allow metadata to grow significantly.
+    const taskWeight = 0.4;
+    const metaWeight = 0.6;
+    
+    const taskMax = Math.floor(available * taskWeight);
+    const metaMax = Math.floor(available * metaWeight);
 
     return {
-      taskMaxWidth: Math.min(taskMax, 100),
-      metadataMaxWidth: Math.min(metaMax, 40),
+      taskMaxWidth: Math.max(10, Math.min(taskMax, 150)),
+      metadataMaxWidth: Math.max(15, Math.min(metaMax, 120)), // Significantly increased from 40
       hideEta,
       hideTime,
       hideIteration,
       hideStatusLabel,
       hideProgressText,
-      isCompact: width < 120
+      isCompact
     };
   });
 

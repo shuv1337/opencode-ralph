@@ -60,15 +60,19 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
   const layoutMetrics = createMemo(() => {
     const width = terminalDimensions().width;
     const isCompact = width < 80;
+    const isWide = width > 120;
     
-    // Calculate available widths
-    const leftColMax = Math.floor(width * 0.4);
-    const rightColMax = Math.floor(width * 0.5);
+    // Calculate available widths based on terminal size
+    const leftColMax = Math.max(20, Math.floor(width * (isWide ? 0.5 : 0.4)));
+    const rightColMax = Math.max(20, Math.floor(width * (isWide ? 0.4 : 0.5)));
     
     return {
       isCompact,
+      isWide,
       leftColMax,
-      rightColMax
+      rightColMax,
+      // Dynamic max width for metadata items like Model, Agent, Adapter
+      metaItemMax: Math.max(20, Math.floor(width * 0.25))
     };
   });
 
@@ -80,7 +84,7 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
     return truncateText(props.currentTaskTitle, layoutMetrics().leftColMax);
   };
 
-  const planLabel = () => (props.planName ? truncateText(props.planName, 30) : null);
+  const planLabel = () => (props.planName ? truncateText(props.planName, layoutMetrics().leftColMax) : null);
 
   const sandboxLabel = () => getSandboxDisplay(props.sandboxConfig);
 
@@ -105,20 +109,20 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
           {props.currentModel && (
             <>
               <text fg={t().textMuted}>Model:</text>
-              <text fg={t().accent}> {truncateText(props.currentModel, 20)}</text>
+              <text fg={t().accent}> {truncateText(props.currentModel, layoutMetrics().metaItemMax)}</text>
               {!layoutMetrics().isCompact && <text fg={t().textMuted}> │</text>}
             </>
           )}
           {props.agentName && !layoutMetrics().isCompact && (
             <>
               <text fg={t().textMuted}>Agent:</text>
-              <text fg={t().secondary}> {truncateText(props.agentName, 15)}</text>
+              <text fg={t().secondary}> {truncateText(props.agentName, layoutMetrics().metaItemMax)}</text>
             </>
           )}
           {props.adapterName && !layoutMetrics().isCompact && (
             <>
               <text fg={t().textMuted}> Adapter:</text>
-              <text fg={t().primary}> {truncateText(props.adapterName, 15)}</text>
+              <text fg={t().primary}> {truncateText(props.adapterName, layoutMetrics().metaItemMax)}</text>
             </>
           )}
         </box>
@@ -136,7 +140,7 @@ export function ProgressDashboard(props: ProgressDashboardProps) {
         </box>
         <box flexDirection="row" gap={1} flexShrink={0}>
           <text fg={t().textMuted}>Sandbox:</text>
-          <text fg={props.sandboxConfig?.enabled ? t().success : t().textMuted}> {truncateText(sandboxLabel() || "", 20)}</text>
+          <text fg={props.sandboxConfig?.enabled ? t().success : t().textMuted}> {truncateText(sandboxLabel() || "", layoutMetrics().metaItemMax)}</text>
         </box>
       </box>
     </box>
