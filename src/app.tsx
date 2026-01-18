@@ -21,7 +21,8 @@ import { keymap, matchesKeybind } from "./lib/keymap";
 import type { LoopState, LoopOptions, PersistedState } from "./state";
 import { detectInstalledTerminals, launchTerminal, getAttachCommand as getAttachCmdFromTerminal, type KnownTerminal } from "./lib/terminal-launcher";
 import { copyToClipboard, detectClipboardTool } from "./lib/clipboard";
-import { loadConfig, setPreferredTerminal, getAllFallbackAgents, setFallbackAgent, removeFallbackAgent } from "./lib/config";
+import { loadConfig, setPreferredTerminal, getAllFallbackAgents, setFallbackAgent, removeFallbackAgent, updateConfig } from "./lib/config";
+
 import { parsePlan, parsePlanTasks, type Task } from "./plan";
 import { layout } from "./components/tui-theme";
 import type { DetailsViewMode, UiTask } from "./components/tui-types";
@@ -576,6 +577,11 @@ function AppContent(props: AppContentProps) {
   const [detailsViewMode, setDetailsViewMode] = createSignal<DetailsViewMode>("output");
   const [showHelp, setShowHelp] = createSignal(false);
   const [showDashboard, setShowDashboard] = createSignal(false);
+  
+  // UI preference signals - initialized from persistent config
+  const initialConfig = loadConfig();
+  const [compactMode, setCompactMode] = createSignal(initialConfig.ui.compactMode);
+
 
   // All tasks converted to UiTask format
   const allUiTasks = createMemo<UiTask[]>(() =>
@@ -584,8 +590,11 @@ function AppContent(props: AppContentProps) {
       title: task.text,
       status: task.done ? "done" : "actionable",
       line: task.line,
+      priority: task.priority,
+      category: task.category,
     }))
   );
+
 
   // Filtered tasks based on showCompletedTasks setting (default: hide completed for optimization)
   const uiTasks = createMemo<UiTask[]>(() => {
@@ -849,6 +858,31 @@ function AppContent(props: AppContentProps) {
         onSelect: () => {
           // Defer to next tick so command palette's pop() completes first
           queueMicrotask(() => showThemeDialog());
+        },
+      },
+    ]);
+
+    // Register "Toggle compact mode" command
+    command.register("toggleCompactMode", () => [
+      {
+        title: compactMode() ? "Disable compact mode" : "Enable compact mode",
+        value: "toggleCompactMode",
+        description: "Switch between single-line and multi-line task layout",
+        onSelect: () => {
+          const newValue = !compactMode();
+          setCompactMode(newValue);
+          // Persist preference to config file
+          try {
+            const current = loadConfig();
+            updateConfig({ ui: { ...current.ui, compactMode: newValue } });
+            log("app", "Compact mode toggled", { compactMode: newValue });
+            toast.show({
+              variant: "info",
+              message: newValue ? "Compact mode enabled (single-line)" : "Dense mode enabled (multi-line)",
+            });
+          } catch (err) {
+            log("app", "Failed to persist compactMode config", { error: String(err) });
+          }
         },
       },
     ]);
@@ -1590,6 +1624,7 @@ function AppContent(props: AppContentProps) {
             height={contentHeight()}
             totalTasks={allUiTasks().length}
             showingCompleted={props.showCompletedTasks()}
+            compactMode={compactMode()}
             onSelect={(index) => setSelectedTaskIndex(index)}
           />
         )}

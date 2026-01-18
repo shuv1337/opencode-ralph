@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo } from "solid-js";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../context/ThemeContext";
-import { RenderMarkdownSegments, stripMarkdownBold } from "../lib/text-utils";
+import { RenderMarkdownSegments, stripMarkdownBold, stripMarkdownLinks } from "../lib/text-utils";
 import { taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
 import type { TaskStatus, UiTask } from "./tui-types";
 
@@ -19,6 +19,8 @@ export type LeftPanelProps = {
   totalTasks?: number;
   /** Whether completed tasks are currently being shown */
   showingCompleted?: boolean;
+  /** Whether to use a more compact single-line layout */
+  compactMode?: boolean;
   /** Callback when a task is clicked/selected */
   onSelect?: (index: number) => void;
 };
@@ -50,7 +52,8 @@ function buildIndentMap(tasks: UiTask[]): Map<string, number> {
 
 function truncateText(text: string, maxWidth: number): string {
   // Use plain text for length calculation to handle markdown properly
-  const plainText = stripMarkdownBold(text);
+  // Strip both bold markers and links for accurate length calculation
+  const plainText = stripMarkdownBold(stripMarkdownLinks(text));
   if (plainText.length <= maxWidth) return text;
   
   if (maxWidth <= 3) return plainText.slice(0, maxWidth);
@@ -61,8 +64,68 @@ function truncateText(text: string, maxWidth: number): string {
   return plainText.slice(0, targetLength) + "…";
 }
 
-// Fixed width for task ID column alignment
+// Fixed width for task ID column alignment in compact mode
 const ID_COLUMN_WIDTH = 10;
+// Fixed gutter width for dense mode (indent + status + ID + tags)
+const GUTTER_WIDTH = 24;
+
+/**
+ * Split text into lines that fit within a specific width.
+ * Strictly preserves all non-whitespace characters to prevent data loss.
+ */
+function wrapText(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  
+  const words = text.split(/(\s+)/); // Preserve whitespace between words
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const segment of words) {
+    // If segment is whitespace and we're at start of line, skip it
+    if (segment.trim() === "" && currentLine === "") continue;
+
+    if ((currentLine + segment).length <= width) {
+      currentLine += segment;
+    } else {
+      // Current segment doesn't fit. Push current line if not empty.
+      if (currentLine !== "") {
+        lines.push(currentLine.trimEnd());
+        currentLine = "";
+      }
+
+      // If segment is just whitespace, skip it as it would be at start of next line
+      if (segment.trim() === "") continue;
+
+      // Handle long word or segment
+      let remaining = segment;
+      while (remaining.length > width) {
+        lines.push(remaining.slice(0, width));
+        remaining = remaining.slice(width);
+      }
+      currentLine = remaining;
+    }
+  }
+  
+  if (currentLine.trim() !== "") {
+    lines.push(currentLine.trimEnd());
+  }
+  
+  return lines.length === 0 ? [""] : lines;
+}
+
+/**
+ * Calculate the required height for a task row based on layout and text wrapping.
+ */
+function calculateTaskHeight(task: UiTask, availableContentWidth: number, compactMode: boolean): number {
+  if (compactMode) return 1;
+  
+  const plainText = stripMarkdownBold(stripMarkdownLinks(task.title));
+  const lines = wrapText(plainText, availableContentWidth);
+
+  // Add 1 extra line of padding for each task to increase gap spacing by ~50-100%
+  return Math.max(1, lines.length) + 1; 
+}
+
 
 /**
  * Get status color from theme using the new semantic color mappings.
@@ -96,7 +159,13 @@ function getStatusColorFromTheme(status: TaskStatus, theme: ReturnType<typeof us
 
 /**
  * Single task item row with hierarchy support.
+ * 
+ * In compact mode (default):
  * Shows: [indent][status indicator] [task ID] [task title (truncated)]
+ * 
+ * In dense mode (compactMode=false):
+ * Line 1: [indent][status indicator] [task title (bold/high density)]
+ * Line 2: [indent]  [task ID] [priority] (dimmed metadata)
  */
 function TaskRow(props: {
   task: UiTask;
@@ -105,6 +174,7 @@ function TaskRow(props: {
   index: number;
   /** Indentation level (0 = root, 1 = child of root) */
   indentLevel?: number;
+  compactMode?: boolean;
   onSelect?: () => void;
 }) {
   const { theme } = useTheme();
@@ -118,7 +188,17 @@ function TaskRow(props: {
   const indentWidth = () => indentLevel() * 2;
 
   const paddedId = () => props.task.id.padEnd(ID_COLUMN_WIDTH).slice(0, ID_COLUMN_WIDTH);
-  const titleWidth = () => Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5 - indentWidth());
+  
+  // Title width calculation depends on mode
+  const titleWidth = () => {
+    if (props.compactMode) {
+      // Compact: Indent + Status(1) + space(1) + ID(10) + space(1) + title
+      return Math.max(10, props.maxWidth - ID_COLUMN_WIDTH - 5 - indentWidth());
+    } else {
+      // Dense: Indent + Title (indented by 2 more spaces)
+      return Math.max(10, props.maxWidth - 4 - indentWidth());
+    }
+  };
 
   const rowBg = () => {
     if (props.isSelected) return t().primary;
@@ -143,29 +223,107 @@ function TaskRow(props: {
     return t().textMuted;
   };
 
+  const priorityTag = () => {
+    if (props.task.priority === undefined) return "";
+    const p = props.task.priority;
+    if (p === 0) return "[P0]";
+    if (p === 1) return "[P1]";
+    if (p === 2) return "[P2]";
+    if (p === 3) return "[P3]";
+    return "[P4]";
+  };
+
+  const categoryTag = () => {
+    if (!props.task.category) return "";
+    return `[${props.task.category}]`;
+  };
+
+  const metadata = () => {
+    const cat = categoryTag();
+    const prio = priorityTag();
+    const combined = `${props.task.id} ${cat}${prio}`;
+    // Fixed width padding for the metadata column
+    return combined.padEnd(GUTTER_WIDTH - 2).slice(0, GUTTER_WIDTH - 2);
+  };
+
+  const metadataWidth = () => 2 + (GUTTER_WIDTH - 2) + 1; // status(1) + space(1) + metadata + space(1)
+
+  const categoryColor = () => {
+    if (props.isSelected) return t().background;
+    return t().secondary; // Use theme's secondary color (Cyan/Blue-ish) for tags
+  };
+
+  // Content width available for description text after gutter and padding
+  const availableContentWidth = () => Math.max(10, props.maxWidth - (GUTTER_WIDTH + indentWidth()));
+
+  const rowHeight = () => 
+    calculateTaskHeight(props.task, availableContentWidth(), !!props.compactMode);
+
+  const wrappedLines = createMemo(() => {
+    const plainText = stripMarkdownBold(stripMarkdownLinks(props.task.title));
+    return wrapText(plainText, availableContentWidth());
+  });
+
   return (
     <box
       width="100%"
-      height={1}
-      flexDirection="row"
+      height={rowHeight()}
+      flexDirection="column"
       paddingLeft={1}
       paddingRight={1}
       backgroundColor={rowBg()}
       onMouseDown={props.onSelect}
     >
-      <text>
-        {/* Render all elements inline in a single text component for perfect layout alignment */}
-        <span style={{ fg: t().textMuted }}>{indent()}</span>
-        <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
-        <span style={{ fg: idColor() }}> {paddedId()}</span>
-        <span style={{ fg: textColor() }}> </span>
-        <RenderMarkdownSegments
-          text={truncateText(props.task.title, titleWidth())}
-          normalColor={textColor()}
-          boldColor={boldColor()}
-          tagColor={t().secondary}
-        />
-      </text>
+      <Show when={props.compactMode} fallback={
+        <box flexDirection="column" width="100%" height={rowHeight()}>
+          {/* Dense Mode: Smart Hanging Indent (No Separators) */}
+          
+          <For each={wrappedLines()}>
+            {(line, lineIdx) => (
+              <box height={1} width="100%">
+                <text>
+                  <Show 
+                    when={lineIdx() === 0}
+                    fallback={
+                      /* Line 2+: Gutter Padding */
+                      <span style={{ fg: t().textMuted }}>{" ".repeat(indentWidth() + metadataWidth())}</span>
+                    }
+                  >
+                    {/* Line 1: [Indent][Status] [Metadata] [Extra Gap] */}
+                    <span style={{ fg: t().textMuted }}>{indent()}</span>
+                    <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
+                    <span style={{ fg: idColor() }}> {props.task.id} </span>
+                    <span style={{ fg: categoryColor() }}>{categoryTag()}</span>
+                    <span style={{ fg: idColor() }}>{priorityTag()} </span>
+                    <span style={{ fg: textColor() }}> </span>
+                  </Show>
+                  
+                  <RenderMarkdownSegments
+                    text={line}
+                    normalColor={textColor()}
+                    boldColor={boldColor()}
+                    tagColor={t().secondary}
+                  />
+                </text>
+              </box>
+            )}
+          </For>
+        </box>
+      }>
+        {/* Compact Mode: Current single-line layout */}
+        <text>
+          <span style={{ fg: t().textMuted }}>{indent()}</span>
+          <span style={{ fg: statusColor() }}>{statusIndicator()}</span>
+          <span style={{ fg: idColor() }}> {paddedId()}</span>
+          <span style={{ fg: textColor() }}> </span>
+          <RenderMarkdownSegments
+            text={truncateText(stripMarkdownLinks(props.task.title), titleWidth())}
+            normalColor={textColor()}
+            boldColor={boldColor()}
+            tagColor={t().secondary}
+          />
+        </text>
+      </Show>
     </box>
   );
 }
@@ -192,6 +350,15 @@ export function LeftPanel(props: LeftPanelProps) {
 
   const taskCount = createMemo(() => props.tasks.length);
 
+  const itemHeights = createMemo(() => 
+    props.tasks.map(task => {
+      const indentLevel = indentMap().get(task.id) ?? 0;
+      const maxWidth = Math.max(20, props.width - 4);
+      const availableContentWidth = Math.max(10, maxWidth - (GUTTER_WIDTH + indentLevel * 2));
+      return calculateTaskHeight(task, availableContentWidth, !!props.compactMode);
+    })
+  );
+
   createEffect(() => {
     const selectedIndex = props.selectedIndex;
     const count = taskCount();
@@ -206,26 +373,28 @@ export function LeftPanel(props: LeftPanelProps) {
 
     // Jump Scrolling Logic:
     // Instead of scrolling 1-to-1, we implement a significant "jump" when the selection 
-    // hits the edges of the visible viewport. This fulfills the user's request for 
-    // an increased jump (2x dashboard height = 12 lines) and ensures rows align perfectly.
+    // hits the edges of the visible viewport. 
     const updateScroll = () => {
       if (!scrollboxRef) return;
 
       const currentTop = scrollboxRef.scrollTop;
-      const dashboardHeight = 6; 
-      const jumpAmount = 2 * dashboardHeight; // 12 lines
+      const heights = itemHeights();
+      
+      // Calculate cumulative offset of selected index
+      const selectedOffset = heights.slice(0, selectedIndex).reduce((sum, h) => sum + h, 0);
+      const selectedHeight = heights[selectedIndex] || 1;
       
       // Estimated viewport height (Total panel height minus title and borders)
       const viewportHeight = Math.max(5, props.height - 2);
-      const bottomThreshold = viewportHeight - 2;
+      const bottomThreshold = viewportHeight - selectedHeight;
 
-      if (selectedIndex >= currentTop + bottomThreshold) {
-        // Selection hit bottom edge -> jump down by jumpAmount
-        scrollboxRef.scrollTop = currentTop + jumpAmount;
+      if (selectedOffset >= currentTop + bottomThreshold) {
+        // Selection hit bottom edge -> jump down
+        scrollboxRef.scrollTop = selectedOffset - viewportHeight + selectedHeight;
         scrollboxRef.requestRender();
-      } else if (selectedIndex < currentTop + 1) {
-        // Selection hit top edge -> jump up by jumpAmount
-        scrollboxRef.scrollTop = Math.max(0, currentTop - jumpAmount);
+      } else if (selectedOffset < currentTop) {
+        // Selection hit top edge -> jump up
+        scrollboxRef.scrollTop = Math.max(0, selectedOffset - 2);
         scrollboxRef.requestRender();
       }
     };
@@ -238,8 +407,8 @@ export function LeftPanel(props: LeftPanelProps) {
       title="Tasks"
       flexGrow={1}
       flexShrink={1}
-      minWidth={30}
-      maxWidth={50}
+      minWidth={50}
+      maxWidth={70}
       flexDirection="column"
       backgroundColor={t().background}
       border
@@ -284,6 +453,7 @@ export function LeftPanel(props: LeftPanelProps) {
                 maxWidth={maxRowWidth()}
                 index={index()}
                 indentLevel={indentMap().get(task.id) ?? 0}
+                compactMode={props.compactMode}
                 onSelect={() => props.onSelect?.(index())}
               />
             )}
