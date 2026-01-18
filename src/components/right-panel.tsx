@@ -2,7 +2,7 @@ import { Show, For, createMemo, Switch, Match } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
 import { renderMarkdownBold } from "../lib/text-utils";
 import { formatViewMode, taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
-import type { DetailsViewMode, TaskStatus, UiTask } from "./tui-types";
+import type { DetailsViewMode, TaskStatus, UiTask, RalphStatus } from "./tui-types";
 import type { ToolEvent } from "../state";
 import { Log } from "./log";
 import { TerminalPane } from "./terminal-pane";
@@ -88,6 +88,7 @@ function getPriorityColor(priority: number, theme: ReturnType<typeof useTheme>["
 export type RightPanelProps = {
   selectedTask: UiTask | null;
   viewMode: DetailsViewMode;
+  status: RalphStatus;
   adapterMode: "sdk" | "pty";
   events: ToolEvent[];
   isIdle: boolean;
@@ -293,6 +294,7 @@ function OutputView(props: {
   adapterMode: "sdk" | "pty";
   events: ToolEvent[];
   isIdle: boolean;
+  status: RalphStatus;
   errorRetryAt?: number;
   terminalBuffer?: string;
   terminalCols: number;
@@ -306,6 +308,7 @@ function OutputView(props: {
           <Log
             events={props.events}
             isIdle={props.isIdle}
+            status={props.status}
             errorRetryAt={props.errorRetryAt}
           />
         }
@@ -384,6 +387,7 @@ export function RightPanel(props: RightPanelProps) {
             adapterMode={props.adapterMode}
             events={props.events}
             isIdle={props.isIdle}
+            status={props.status}
             errorRetryAt={props.errorRetryAt}
             terminalBuffer={props.terminalBuffer}
             terminalCols={props.terminalCols}

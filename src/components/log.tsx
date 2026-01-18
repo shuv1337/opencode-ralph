@@ -6,6 +6,7 @@ import { renderMarkdownBold, stripAnsiCodes, type FormattedSegment } from "../li
 import type { ToolEvent } from "../state";
 import { useTheme } from "../context/ThemeContext";
 import type { Theme } from "../lib/theme-resolver";
+import type { RalphStatus } from "./tui-types";
 
 /**
  * Render a line with tool name highlighting using OpenTUI span style.
@@ -88,6 +89,7 @@ function getToolColor(icon: string | undefined, theme: Theme): string {
 export type LogProps = {
   events: ToolEvent[];
   isIdle: boolean;
+  status: RalphStatus;
   /** Timestamp (epoch ms) when next retry will occur, undefined when no backoff active */
   errorRetryAt?: number;
 };
@@ -130,7 +132,7 @@ function RetryCountdown(props: { retryAt: number; theme: Theme }) {
  * once on mount and whenever isIdle changes. The intervalRef guard ensures
  * only one interval is ever active.
  */
-function Spinner(props: { isIdle: boolean; theme: Theme }) {
+function Spinner(props: { isIdle: boolean; status: RalphStatus; theme: Theme }) {
   const [frame, setFrame] = createSignal(0);
   let intervalRef: ReturnType<typeof setInterval> | null = null;
 
@@ -161,10 +163,20 @@ function Spinner(props: { isIdle: boolean; theme: Theme }) {
     }
   });
 
+  const statusText = () => {
+    if (props.status === "paused") return " paused...";
+    if (props.status === "complete") return " complete";
+    if (props.status === "error") return " error";
+    if (props.status === "stopped") return " stopped";
+    if (props.status === "idle") return " idle";
+    if (props.isIdle) return " waiting...";
+    return " looping...";
+  };
+
   return (
     <box width="100%" flexDirection="row" paddingTop={1}>
       <text fg={props.theme.secondary}>{SPINNER_FRAMES[frame()]}</text>
-      <text fg={props.theme.textMuted}> looping...</text>
+      <text fg={props.theme.textMuted}>{statusText()}</text>
     </box>
   );
 }
@@ -329,7 +341,7 @@ export function Log(props: LogProps) {
         {(event) => (
           <Switch>
             <Match when={event.type === "spinner"}>
-              <Spinner isIdle={props.isIdle} theme={t()} />
+              <Spinner isIdle={props.isIdle} status={props.status} theme={t()} />
             </Match>
             <Match when={event.type === "separator"}>
               <SeparatorEvent event={event} theme={t()} />
