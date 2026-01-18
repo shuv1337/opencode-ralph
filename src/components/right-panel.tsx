@@ -1,6 +1,6 @@
 import { Show, For, createMemo, Switch, Match } from "solid-js";
 import { useTheme } from "../context/ThemeContext";
-import { renderMarkdownBold } from "../lib/text-utils";
+import { RenderMarkdownSegments, renderMarkdownBold } from "../lib/text-utils";
 import { formatViewMode, taskStatusIndicators, getTaskStatusColor } from "./tui-theme";
 import type { DetailsViewMode, TaskStatus, UiTask, RalphStatus } from "./tui-types";
 import type { ToolEvent } from "../state";
@@ -173,7 +173,14 @@ function AcceptanceCriteriaList(props: {
               <text fg={item.checked ? t().success : t().textMuted}>
                 {item.checked ? "✓" : "○"}
               </text>
-              <text fg={item.checked ? t().textMuted : t().text}> {item.text}</text>
+              <text fg={item.checked ? t().textMuted : t().text}>
+                <RenderMarkdownSegments
+                  text={" " + item.text}
+                  normalColor={item.checked ? t().textMuted : t().text}
+                  boldColor={t().accent}
+                  tagColor={t().secondary}
+                />
+              </text>
             </box>
           )}
         </For>
@@ -198,8 +205,10 @@ function PriorityDisplay(props: {
 
   return (
     <box marginBottom={1}>
-      <text fg={t().textMuted}>Priority: </text>
-      <text fg={priorityColor()}>{priorityLabel()}</text>
+      <text>
+        <span style={{ fg: t().textMuted }}>Priority: </span>
+        <span style={{ fg: priorityColor() }}>{priorityLabel()}</span>
+      </text>
     </box>
   );
 }
@@ -215,18 +224,29 @@ function TaskDetails(props: { task: UiTask }) {
   const statusColor = () => getStatusColorFromTheme(props.task.status, theme);
   const statusIndicator = () => taskStatusIndicators[props.task.status] || taskStatusIndicators.pending;
 
-  // Render title and description with markdown bold parsing
-  const renderedTitle = () => renderMarkdownBold(
-    props.task.title, 
-    t().text, 
-    t().accent,
-    t().secondary // Use secondary color for [tags]
+  // Render title and description with markdown bold parsing using RenderMarkdownSegments
+  const renderedTitle = () => (
+    <text>
+      <span style={{ fg: statusColor() }}>{statusIndicator()} </span>
+      <RenderMarkdownSegments
+        text={props.task.title}
+        normalColor={t().text}
+        boldColor={t().accent}
+        tagColor={t().secondary}
+      />
+      <span style={{ fg: t().textMuted }}> ({props.task.id})</span>
+    </text>
   );
-  const renderedDescription = () => renderMarkdownBold(
-    props.task.description ?? props.task.title,
-    t().text,
-    t().accent,
-    t().secondary // Use secondary color for [tags]
+
+  const renderedDescription = () => (
+    <text fg={t().text} width="100%">
+      <RenderMarkdownSegments
+        text={props.task.description ?? props.task.title}
+        normalColor={t().text}
+        boldColor={t().accent}
+        tagColor={t().secondary}
+      />
+    </text>
   );
 
   // Check if description contains acceptance criteria
@@ -239,15 +259,14 @@ function TaskDetails(props: { task: UiTask }) {
     <box flexDirection="column" padding={1} flexGrow={1}>
       <scrollbox flexGrow={1}>
         <box marginBottom={1}>
-          <text fg={statusColor()}>{statusIndicator()}</text>
-          <text fg={t().text}> </text>
           {renderedTitle()}
-          <text fg={t().textMuted}> ({props.task.id})</text>
         </box>
 
         <box marginBottom={1}>
-          <text fg={t().textMuted}>Status: </text>
-          <text fg={statusColor()}>{props.task.status}</text>
+          <text>
+            <span style={{ fg: t().textMuted }}>Status: </span>
+            <span style={{ fg: statusColor() }}>{props.task.status}</span>
+          </text>
         </box>
 
         {/* NEW: Priority display */}
@@ -257,8 +276,10 @@ function TaskDetails(props: { task: UiTask }) {
 
         <Show when={props.task.line !== undefined}>
           <box marginBottom={1}>
-            <text fg={t().textMuted}>Plan line: </text>
-            <text fg={t().text}>{props.task.line}</text>
+            <text>
+              <span style={{ fg: t().textMuted }}>Plan line: </span>
+              <span style={{ fg: t().text }}>{props.task.line}</span>
+            </text>
           </box>
         </Show>
 
@@ -282,7 +303,7 @@ function TaskDetails(props: { task: UiTask }) {
 
       {/* Keybind hints */}
       <box flexDirection="row" gap={2} marginTop={1}>
-        <text fg={t().textMuted}>[Shift+C] Show completed</text>
+        <text fg={t().textMuted}>[C] Commands</text>
         <text fg={t().textMuted}>[↑↓] Navigate</text>
         <text fg={t().textMuted}>[?] Help</text>
       </box>
@@ -327,10 +348,6 @@ function PromptView(props: { promptText?: string; task?: UiTask | null }) {
   const { theme } = useTheme();
   const t = () => theme();
 
-  const renderedPrompt = createMemo(() =>
-    renderMarkdownBold(props.promptText || "No prompt available", t().text, t().accent)
-  );
-
   return (
     <box flexDirection="column" padding={1} flexGrow={1}>
       <box marginBottom={1}>
@@ -338,8 +355,15 @@ function PromptView(props: { promptText?: string; task?: UiTask | null }) {
       </box>
       <Show when={props.task}>
         <box marginBottom={1}>
-          <text fg={t().textMuted}>Target Task: </text>
-          <text fg={t().accent}>{props.task?.title}</text>
+          <text>
+            <span style={{ fg: t().textMuted }}>Target Task: </span>
+            <RenderMarkdownSegments
+              text={props.task?.title || ""}
+              normalColor={t().accent}
+              boldColor={t().accent}
+              tagColor={t().secondary}
+            />
+          </text>
         </box>
       </Show>
       <scrollbox
@@ -349,7 +373,14 @@ function PromptView(props: { promptText?: string; task?: UiTask | null }) {
         backgroundColor={t().backgroundElement}
         padding={1}
       >
-        {renderedPrompt()}
+        <text fg={t().text} width="100%">
+          <RenderMarkdownSegments
+            text={props.promptText || "No prompt available"}
+            normalColor={t().text}
+            boldColor={t().accent}
+            tagColor={t().secondary}
+          />
+        </text>
       </scrollbox>
       <box marginTop={1}>
         <text fg={t().textMuted}>Note: Prompt includes dynamic context (plan, progress).</text>
@@ -373,7 +404,7 @@ export function RightPanel(props: RightPanelProps) {
       flexDirection="column"
       backgroundColor={t().background}
       border
-      borderColor={t().border}
+      borderColor={t().primary}
     >
       <Switch
         fallback={

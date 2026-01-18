@@ -415,7 +415,7 @@ export function LeftPanel(props: LeftPanelProps) {
       flexDirection="column"
       backgroundColor={t().background}
       border
-      borderColor={t().border}
+      borderColor={t().primary}
     >
       <scrollbox
         ref={(el) => {
@@ -442,9 +442,6 @@ export function LeftPanel(props: LeftPanelProps) {
           fallback={
             <box padding={1} flexDirection="column">
               <text fg={t().success}>{emptyMessage()}</text>
-              <Show when={(props.totalTasks ?? 0) > 0 && !(props.showingCompleted ?? false)}>
-                <text fg={t().textMuted}>Press Shift+C to show completed</text>
-              </Show>
             </box>
           }
         >
