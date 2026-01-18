@@ -338,7 +338,6 @@ Ralph writes operational learnings here. Future iterations read it.
 | `:` | Steering mode (send message to agent) |
 | `t` | Launch terminal with attach command |
 | `Shift+T` | Toggle tasks panel |
-| `Shift+C` | Toggle completed tasks / Copy attach command |
 | `o` | Toggle Details/Output view |
 | `d` | Toggle progress dashboard |
 | `?` | Show help overlay |

@@ -111,7 +111,6 @@ export const keyboardShortcuts: KeyboardShortcut[] = [
   { key: "q", description: "Quit" },
   { key: "p", description: "Pause/Resume" },
   { key: "c", description: "Commands" },
-  { key: "C", description: "Completed" },
   { key: "t", description: "Terminal" },
   { key: "T", description: "Tasks" },
   { key: "o", description: "Details/Output" },
@@ -134,7 +133,6 @@ export const fullKeyboardShortcuts: FullKeyboardShortcut[] = [
   // Views
   { key: "o", description: "Toggle details / output view", category: "Views" },
   { key: "T", description: "Show / hide task list", category: "Views" },
-  { key: "C", description: "Show / hide completed tasks", category: "Views" },
   { key: "d", description: "Toggle progress dashboard", category: "Views" },
   // Navigation
   { key: "↑ / k", description: "Move selection up", category: "Navigation" },
