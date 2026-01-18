@@ -1,9 +1,12 @@
 import { createOpencodeServer, createOpencodeClient } from "@opencode-ai/sdk";
 import { getAdapter, initializeAdapters } from "./adapters/registry.js";
 import type { LoopOptions, PersistedState, SessionInfo, ToolEvent } from "./state.js";
+import type { SandboxConfig, RateLimitState, ActiveAgentState } from "./components/tui-types";
 import { getHeadHash, getCommitsSince, getDiffStats } from "./git.js";
 import { parsePlan, validatePlanCompletion } from "./plan.js";
 import { log } from "./lib/log";
+import { rateLimitDetector, getFallbackAgent } from "./lib/rate-limit";
+
 
 import { ErrorHandler, ErrorContext } from "./lib/error-handler";
 
@@ -489,6 +492,14 @@ export type LoopCallbacks = {
   onTokens?: (tokens: TokenUsage) => void;
   /** Called when the plan file is modified (for real-time task list updates) */
   onPlanFileModified?: () => void;
+  /** Called when the model being used is identified or changed */
+  onModel?: (model: string) => void;
+  /** Called when sandbox status is identified */
+  onSandbox?: (sandbox: SandboxConfig) => void;
+  /** Called when rate limit is detected or cleared */
+  onRateLimit?: (state: RateLimitState) => void;
+  /** Called when active agent state changes */
+  onActiveAgent?: (state: ActiveAgentState) => void;
 };
 
 type PauseState = {
@@ -500,7 +511,11 @@ const PAUSE_POLL_INTERVAL_MS = 1000;
 async function waitWhilePaused(
   pauseState: PauseState,
   callbacks: LoopCallbacks,
-  signal: AbortSignal
+  signal: AbortSignal,
+  hooks?: {
+    onPause?: () => Promise<void>;
+    onResume?: () => Promise<void>;
+  }
 ): Promise<boolean> {
   const pauseFilePath = ".ralph-pause";
   if (!(await Bun.file(pauseFilePath).exists())) {
@@ -508,6 +523,7 @@ async function waitWhilePaused(
       pauseState.value = false;
       log("loop", "Resuming");
       callbacks.onResume();
+      if (hooks?.onResume) await hooks.onResume();
     }
     return false;
   }
@@ -516,6 +532,7 @@ async function waitWhilePaused(
     pauseState.value = true;
     log("loop", "Pausing");
     callbacks.onPause();
+    if (hooks?.onPause) await hooks.onPause();
   }
 
   while (!signal.aborted && (await Bun.file(pauseFilePath).exists())) {
@@ -526,6 +543,7 @@ async function waitWhilePaused(
     pauseState.value = false;
     log("loop", "Resuming");
     callbacks.onResume();
+    if (hooks?.onResume) await hooks.onResume();
   }
 
   return true;
@@ -777,9 +795,40 @@ export async function runLoop(
     const client = createOpencodeClient({ baseUrl: server.url, fetch: createTimeoutlessFetch() } as any);
     log("loop", "Client created");
 
+    // Report initial model from options
+    callbacks.onModel?.(options.model);
+    callbacks.onActiveAgent?.({
+      plugin: options.agent || options.model,
+      reason: "primary"
+    });
+
+    // Fetch sandbox info from opencode project info
+    try {
+      const projectResult = await client.project.current();
+      if (projectResult.data) {
+        const project = projectResult.data as any;
+        const currentDir = process.cwd();
+        const isSandbox = project.sandboxes?.some((s: string) => 
+          s === currentDir || 
+          s.replace(/\\/g, '/') === currentDir.replace(/\\/g, '/')
+        );
+        
+        callbacks.onSandbox?.({
+          enabled: isSandbox,
+          mode: isSandbox ? "sandbox" : "local",
+        });
+        log("loop", "Sandbox info detected", { isSandbox, mode: isSandbox ? "sandbox" : "local" });
+      }
+    } catch (e) {
+      log("loop", "Failed to fetch project info for sandbox detection", { error: String(e) });
+    }
+
     // Initialize iteration counter from persisted state
     let iteration = persistedState.iterationTimes.length;
+    let currentModel = options.model;
+    let isOnFallback = false;
     // Check if pause file exists at startup - if so, start in paused state
+
     // to avoid calling onPause() callback (which would override "ready" status)
     const pauseFileExistsAtStart = await Bun.file(".ralph-pause").exists();
     const pauseState: PauseState = { value: pauseFileExistsAtStart };
@@ -845,7 +894,7 @@ export async function runLoop(
 
         // Parse model and build prompt before session creation
         const promptText = applySteeringContext(await buildPrompt(options));
-        const { providerID, modelID } = parseModel(options.model);
+        const { providerID, modelID } = parseModel(currentModel);
 
         // Create session (10.13)
         log("loop", "Creating session...");
@@ -914,7 +963,17 @@ export async function runLoop(
         const loggedTextByPartId = new Map<string, string>();
         
         for await (const event of events.stream) {
-          await waitWhilePaused(pauseState, callbacks, signal);
+          await waitWhilePaused(pauseState, callbacks, signal, {
+            onPause: async () => {
+              if (activeSessionId) {
+                log("loop", "Aborting session due to pause", { sessionId: activeSessionId });
+                // @ts-ignore - abort might not be in the type but is in the API
+                await client.session.abort({ path: { id: activeSessionId } }).catch(e => {
+                  log("loop", "Failed to abort session during pause", { error: String(e) });
+                });
+              }
+            }
+          });
           if (signal.aborted || subscriptionSignal.aborted) break;
 
           // When SSE connection is established, send the prompt
@@ -939,6 +998,15 @@ export async function runLoop(
           }
 
           if (signal.aborted || subscriptionSignal.aborted) break;
+
+          // Detect model change from assistant messages
+          if (event.type === "message.updated") {
+            const info = event.properties.info;
+            if (info.sessionID === sessionId && info.role === "assistant" && info.modelID && info.providerID) {
+              const model = `${info.providerID}/${info.modelID}`;
+              callbacks.onModel?.(model);
+            }
+          }
 
           // Filter events for current session ID
           if (event.type === "message.part.updated") {
@@ -1129,6 +1197,44 @@ export async function runLoop(
           throw iterationError;
         }
 
+        const errorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
+
+        // Detect rate limit and handle fallback
+        const rateLimit = rateLimitDetector.detect({
+          stderr: errorMessage,
+          agentId: options.agent
+        });
+
+        if (rateLimit.isRateLimit && !isOnFallback) {
+          const fallback = options.fallbackAgents?.[currentModel] || getFallbackAgent(currentModel);
+          if (fallback) {
+            log("loop", "Rate limit detected, switching to fallback agent", { 
+              primary: currentModel, 
+              fallback,
+              retryAfter: rateLimit.retryAfter 
+            });
+            
+            const primaryModel = currentModel;
+            currentModel = fallback;
+            isOnFallback = true;
+            
+            // Notify TUI of agent switch
+            callbacks.onModel?.(currentModel);
+            callbacks.onRateLimit?.({
+              limitedAt: Date.now(),
+              primaryAgent: primaryModel,
+              fallbackAgent: currentModel
+            });
+            callbacks.onActiveAgent?.({
+              plugin: options.agent || currentModel,
+              reason: "fallback"
+            });
+            
+            // If we have a retry-after, we might want to wait, but the errorHandler
+            // will handle the delay anyway.
+          }
+        }
+
         const context: ErrorContext = {
           iteration,
           error: iterationError as Error,
@@ -1148,9 +1254,9 @@ export async function runLoop(
           continue;
         }
         
-        const errorMessage = result.message;
-        log("loop", "Error in iteration", { error: errorMessage });
-        callbacks.onError(errorMessage);
+        const loopErrorMessage = result.message;
+        log("loop", "Error in iteration", { error: loopErrorMessage });
+        callbacks.onError(loopErrorMessage);
         
         if (result.strategy === 'abort') {
           throw iterationError;
@@ -1161,9 +1267,9 @@ export async function runLoop(
     
     log("loop", "Main loop exited", { aborted: signal.aborted });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log("loop", "ERROR in runLoop", { error: errorMessage });
-    callbacks.onError(errorMessage);
+    const catchErrorMessage = error instanceof Error ? error.message : String(error);
+    log("loop", "ERROR in runLoop", { error: catchErrorMessage });
+    callbacks.onError(catchErrorMessage);
     throw error;
   } finally {
     // Use the cleanup function for proper session and server termination
@@ -1194,9 +1300,16 @@ async function runPtyLoop(
   }
 
   callbacks.onAdapterModeChanged?.("pty");
+  callbacks.onActiveAgent?.({
+    plugin: options.agent || options.model,
+    reason: "primary"
+  });
 
   let iteration = persistedState.iterationTimes.length;
+  let currentModel = options.model;
+  let isOnFallback = false;
   const pauseFileExistsAtStart = await Bun.file(".ralph-pause").exists();
+
   const pauseState: PauseState = { value: pauseFileExistsAtStart };
   let previousCommitCount = await getCommitsSince(persistedState.initialCommitHash);
   let errorCount = 0;
@@ -1255,12 +1368,13 @@ async function runPtyLoop(
 
       const session = await adapter.execute({
         prompt: promptText,
-        model: options.model,
+        model: currentModel,
         cwd: process.cwd(),
         signal,
         cols: process.stdout.columns || 80,
         rows: process.stdout.rows || 24,
       });
+
 
       let sessionActive = true;
       const sessionId = `pty-${Date.now()}`;
@@ -1280,9 +1394,15 @@ async function runPtyLoop(
 
       callbacks.onIdleChanged(true);
       let receivedOutput = false;
+      let accumulatedOutput = "";
 
       for await (const event of session.events) {
-        await waitWhilePaused(pauseState, callbacks, signal);
+        await waitWhilePaused(pauseState, callbacks, signal, {
+          onPause: async () => {
+            log("loop", "Aborting PTY session due to pause");
+            session.abort();
+          }
+        });
         if (signal.aborted) break;
 
         if (event.type === "output") {
@@ -1290,12 +1410,54 @@ async function runPtyLoop(
             receivedOutput = true;
             callbacks.onIdleChanged(false);
           }
+          accumulatedOutput += event.data;
           callbacks.onRawOutput?.(event.data);
         } else if (event.type === "exit") {
           sessionActive = false;
           callbacks.onSessionEnded?.(sessionId);
+          
+          // Check for rate limit on non-zero exit
+          if (event.code !== 0 && event.code !== undefined) {
+            const rateLimit = rateLimitDetector.detect({
+              stderr: accumulatedOutput,
+              exitCode: event.code,
+              agentId: options.agent
+            });
+            
+            if (rateLimit.isRateLimit && !isOnFallback) {
+              const fallback = options.fallbackAgents?.[currentModel] || getFallbackAgent(currentModel);
+              if (fallback) {
+                log("loop", "PTY: Rate limit detected on exit, switching to fallback agent", { 
+                  primary: currentModel, 
+                  fallback,
+                  exitCode: event.code
+                });
+                
+                const primaryModel = currentModel;
+                currentModel = fallback;
+                isOnFallback = true;
+                
+                callbacks.onModel?.(currentModel);
+                callbacks.onRateLimit?.({
+                  limitedAt: Date.now(),
+                  primaryAgent: primaryModel,
+                  fallbackAgent: currentModel
+                });
+                callbacks.onActiveAgent?.({
+                  plugin: options.agent || currentModel,
+                  reason: "fallback"
+                });
+                
+                iteration--;
+                errorCount++;
+                // We need to break out and continue the while loop
+                throw new Error(`Rate limit detected: ${rateLimit.message || "Unknown error"}`);
+              }
+            }
+          }
           break;
         } else if (event.type === "error") {
+
           sessionActive = false;
           callbacks.onSessionEnded?.(sessionId);
           callbacks.onError(event.message);
@@ -1326,10 +1488,50 @@ async function runPtyLoop(
         throw iterationError;
       }
 
-      const errorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
+      const ptyErrorMessage = iterationError instanceof Error ? iterationError.message : String(iterationError);
+
+      // Detect rate limit and handle fallback
+      const rateLimit = rateLimitDetector.detect({
+        stderr: ptyErrorMessage,
+        agentId: options.agent
+      });
+
+      if (rateLimit.isRateLimit && !isOnFallback) {
+        const fallback = options.fallbackAgents?.[currentModel] || getFallbackAgent(currentModel);
+        if (fallback) {
+          log("loop", "PTY: Rate limit detected, switching to fallback agent", { 
+            primary: currentModel, 
+            fallback,
+            retryAfter: rateLimit.retryAfter 
+          });
+          
+          const primaryModel = currentModel;
+          currentModel = fallback;
+          isOnFallback = true;
+          
+          // Notify TUI of agent switch
+          callbacks.onModel?.(currentModel);
+          callbacks.onRateLimit?.({
+            limitedAt: Date.now(),
+            primaryAgent: primaryModel,
+            fallbackAgent: currentModel
+          });
+          callbacks.onActiveAgent?.({
+            plugin: options.agent || currentModel,
+            reason: "primary"
+          });
+          
+          // Decrease iteration because we are retrying it
+          iteration--;
+          errorCount++;
+          continue;
+        }
+      }
+
       errorCount++;
-      log("loop", "Error in iteration", { error: errorMessage, errorCount });
-      callbacks.onError(errorMessage);
+      log("loop", "Error in iteration", { error: ptyErrorMessage, errorCount });
+      callbacks.onError(ptyErrorMessage);
     }
+
   }
 }

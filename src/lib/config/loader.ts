@@ -79,3 +79,58 @@ export function clearTerminalPreferences(): void {
   delete config.customTerminalCommand;
   saveConfig(config);
 }
+
+// =====================================================
+// FALLBACK AGENT CONFIGURATION
+// =====================================================
+
+/**
+ * Get the fallback agent for a rate-limited primary agent.
+ * Checks user config first, then falls back to defaults.
+ */
+export function getFallbackAgent(primaryAgent: string): string | undefined {
+  const config = loadConfig();
+  const fallbackAgents = config.fallbackAgents || {};
+
+  // Check for exact match
+  if (fallbackAgents[primaryAgent]) {
+    return fallbackAgents[primaryAgent];
+  }
+
+  // Check for partial match (e.g., "anthropic/claude-opus-4" -> "claude-opus-4")
+  for (const [key, fallback] of Object.entries(fallbackAgents)) {
+    if (primaryAgent.includes(key)) {
+      return fallback;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Set a fallback agent mapping.
+ */
+export function setFallbackAgent(primaryAgent: string, fallbackAgent: string): void {
+  const config = loadConfig();
+  const fallbackAgents = config.fallbackAgents || {};
+  fallbackAgents[primaryAgent] = fallbackAgent;
+  updateConfig({ fallbackAgents });
+}
+
+/**
+ * Remove a fallback agent mapping.
+ */
+export function removeFallbackAgent(primaryAgent: string): void {
+  const config = loadConfig();
+  const fallbackAgents = config.fallbackAgents || {};
+  delete fallbackAgents[primaryAgent];
+  updateConfig({ fallbackAgents });
+}
+
+/**
+ * Get all configured fallback agent mappings.
+ */
+export function getAllFallbackAgents(): Record<string, string> {
+  const config = loadConfig();
+  return config.fallbackAgents || {};
+}
