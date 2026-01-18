@@ -109,3 +109,16 @@ export function hasMarkdownBold(text: string): boolean {
 export function hasTagPattern(text: string): boolean {
   return /\[[^\]]+\]/.test(text);
 }
+
+/**
+ * Abbreviate a tag/category to its first initial in brackets.
+ * e.g. "functional" -> "[F]"
+ * 
+ * @param category - The category string to abbreviate
+ * @returns Abbreviated tag or empty string if no category
+ */
+export function getCompactTag(category?: string): string {
+  if (!category) return "";
+  const char = category.replace(/[\[\]]/g, "").trim().charAt(0).toUpperCase();
+  return char ? `[${char}]` : "";
+}

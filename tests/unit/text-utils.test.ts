@@ -1,8 +1,34 @@
 import { describe, it, expect } from "bun:test";
-import { parseMarkdownSegments, stripMarkdownBold, hasMarkdownBold } from "../../src/lib/markdown";
+import { parseMarkdownSegments, stripMarkdownBold, hasMarkdownBold, getCompactTag } from "../../src/lib/markdown";
 import { parseToSegments } from "../../src/lib/ansi";
 
 describe("text-utils", () => {
+  describe("getCompactTag", () => {
+    it("should abbreviate long category name", () => {
+      expect(getCompactTag("functional")).toBe("[F]");
+    });
+
+    it("should handle already bracketed category", () => {
+      expect(getCompactTag("[functional]")).toBe("[F]");
+    });
+
+    it("should handle category with spaces", () => {
+      expect(getCompactTag(" user experience ")).toBe("[U]");
+    });
+
+    it("should return empty string for undefined category", () => {
+      expect(getCompactTag(undefined)).toBe("");
+    });
+
+    it("should return empty string for empty category", () => {
+      expect(getCompactTag("")).toBe("");
+    });
+
+    it("should uppercase the initial", () => {
+      expect(getCompactTag("backend")).toBe("[B]");
+    });
+  });
+
   describe("parseMarkdownSegments", () => {
     it("should return single segment for plain text", () => {
       const result = parseMarkdownSegments("Hello world");
