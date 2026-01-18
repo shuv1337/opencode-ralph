@@ -1,4 +1,5 @@
 import { log } from "./lib/log";
+import type { TaskStatus } from "./types/task-status";
 
 /**
  * Plan file parser for openralph
@@ -9,7 +10,9 @@ export type PrdItem = {
   description: string;
   steps?: string[];
   passes: boolean;
+  status?: TaskStatus;
 };
+
 
 export type PlanFormat = "prd-json" | "markdown" | "unknown";
 
@@ -42,7 +45,10 @@ export type Task = {
   priority?: number;
   /** Task category */
   category?: string;
+  /** Granular task status */
+  status?: TaskStatus;
 };
+
 
 
 // Regex to match markdown checkbox items
@@ -99,6 +105,7 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
       description,
       steps: steps as string[] | undefined,
       passes: candidate.passes as boolean,
+      status: typeof candidate.status === "string" ? (candidate.status as TaskStatus) : undefined,
     });
   }
 
@@ -184,6 +191,7 @@ export async function parsePlanTasks(path: string): Promise<Task[]> {
         text: item.description,
         done: item.passes,
         category: item.category,
+        status: item.status,
       };
     });
   }
@@ -297,4 +305,80 @@ export async function validatePlanCompletion(planFile: string): Promise<boolean>
   const { done, total } = await parsePlan(planFile);
   return total > 0 && done === total;
 }
+
+/**
+ * Save updated tasks back to the plan file.
+ * Supports both PRD JSON and Markdown formats.
+ * @param path - Path to the plan file
+ * @param updatedTasks - Array of tasks with updated status/done state
+ */
+export async function savePlanTasks(path: string, updatedTasks: Task[]): Promise<void> {
+  const file = Bun.file(path);
+  if (!(await file.exists())) {
+    throw new Error(`Plan file does not exist: ${path}`);
+  }
+
+  const content = await file.text();
+  const prdItems = parsePrdItems(content);
+
+  if (prdItems) {
+    // JSON Format
+    try {
+      const parsed = JSON.parse(content);
+      let items: any[];
+      if (Array.isArray(parsed)) {
+        items = parsed;
+      } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
+        items = parsed.items;
+      } else {
+        throw new Error("Invalid PRD JSON structure");
+      }
+
+      for (const task of updatedTasks) {
+        const match = task.id.match(/^prd-(\d+)$/);
+        if (match) {
+          const index = parseInt(match[1], 10) - 1;
+          if (items[index]) {
+            items[index].passes = task.done;
+            if (task.status) {
+              items[index].status = task.status;
+            }
+          }
+        }
+      }
+
+      await Bun.write(path, JSON.stringify(parsed, null, 2));
+      log("plan", `Saved ${updatedTasks.length} tasks to PRD JSON`, { path });
+    } catch (error) {
+      log("plan", "Failed to save PRD JSON", { error: String(error) });
+      throw error;
+    }
+  } else {
+    // Markdown Format
+    const lines = content.split(/\r?\n/);
+    let modified = false;
+
+    for (const task of updatedTasks) {
+      const lineIndex = task.line - 1;
+      if (lines[lineIndex]) {
+        const match = lines[lineIndex].match(CHECKBOX_PATTERN);
+        if (match) {
+          const [, indent, , text] = match;
+          const checkbox = task.done ? "x" : " ";
+          const newLine = `${indent}- [${checkbox}] ${text}`;
+          if (lines[lineIndex] !== newLine) {
+            lines[lineIndex] = newLine;
+            modified = true;
+          }
+        }
+      }
+    }
+
+    if (modified) {
+      await Bun.write(path, lines.join("\n"));
+      log("plan", `Saved ${updatedTasks.length} tasks to Markdown`, { path });
+    }
+  }
+}
+
 
