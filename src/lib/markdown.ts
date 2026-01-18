@@ -31,9 +31,9 @@ export function parseMarkdownSegments(text: string): TextSegment[] {
   const result: TextSegment[] = [];
   
   // Combined pattern: match either [tag] or **bold**
-  // [tag] = square brackets with content inside (excluding ])
-  // **bold** = double asterisks with content inside (excluding *)
-  const pattern = /(\[[^\]]+\])|\*\*([^*]+)\*\*/g;
+  // [tag] = square brackets with content inside
+  // **bold** = double asterisks with content inside
+  const pattern = /(\[[^\]]+\])|\*\*([^\*]+)\*\*/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
