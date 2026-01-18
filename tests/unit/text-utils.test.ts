@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { parseMarkdownSegments, stripMarkdownBold, hasMarkdownBold } from "../../src/lib/markdown";
+import { parseToSegments } from "../../src/lib/ansi";
 
 describe("text-utils", () => {
   describe("parseMarkdownSegments", () => {
@@ -95,6 +96,21 @@ describe("text-utils", () => {
 
     it("should return true for multiple bold sections", () => {
       expect(hasMarkdownBold("**one** and **two**")).toBe(true);
+    });
+  });
+
+  describe("parseToSegments", () => {
+    it("should highlight tool names in green", () => {
+      const input = "[read] src/index.ts";
+      const result = parseToSegments(input);
+      expect(result).toContainEqual({ text: "[read]", color: "#9ece6a", bold: true });
+      expect(result).toContainEqual({ text: " src/index.ts" });
+    });
+
+    it("should handle plain text without tool names", () => {
+      const input = "Normal reasoning text";
+      const result = parseToSegments(input);
+      expect(result).toContainEqual({ text: "Normal reasoning text" });
     });
   });
 });
