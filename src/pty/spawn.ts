@@ -126,7 +126,15 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
     kill: () => {
       if (isCleanedUp) return;
       try {
-        proc.kill();
+        if (process.platform === "win32") {
+          // Use taskkill /F /T for recursive termination on Windows
+          Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+            stdout: "ignore",
+            stderr: "ignore"
+          });
+        } else {
+          proc.kill();
+        }
       } catch (error) {
         log("pty", "kill error", { error: String(error) });
       }
@@ -149,7 +157,15 @@ export function spawnPty(command: string[], options: PtyOptions = {}): PtyProces
         }
       }
       try {
-        proc.kill();
+        if (process.platform === "win32") {
+          // Use taskkill /F /T for recursive termination on Windows
+          Bun.spawn(["taskkill", "/F", "/T", "/PID", String(proc.pid)], {
+            stdout: "ignore",
+            stderr: "ignore"
+          });
+        } else {
+          proc.kill();
+        }
       } catch {
         // Process may already be dead
       }
