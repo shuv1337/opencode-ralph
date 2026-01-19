@@ -14,7 +14,7 @@ import { startApp, destroyRenderer } from "./app";
 import { runLoop, cleanupDebugSession } from "./loop";
 import { runHeadlessMode } from "./headless";
 import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress } from "./init";
-import { initLog, log } from "./lib/log";
+import { initLog, log, stopMemoryLogging, logMemory, setVerbose } from "./lib/log";
 import { validatePlanFile } from "./plan";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
@@ -122,6 +122,9 @@ function createBatchStateUpdater(
         avgBatchSize,
         currentBatchSize: batchSize,
       });
+
+      // Log memory usage periodically with batching stats
+      logMemory("Periodic snapshot");
       lastLogTime = now;
     }
 
@@ -408,6 +411,12 @@ async function main() {
       description: "Force acquire session lock",
       default: false,
     })
+    .option("verbose", {
+      alias: "V",
+      type: "boolean",
+      description: "Enable verbose debug logging to file",
+      default: false,
+    })
     .option("fallback-agent", {
       type: "array",
       string: true,
@@ -549,6 +558,9 @@ async function main() {
 
     // Initialize logging (reset log when state is reset)
     const isNewRun = !stateToUse;
+    // Set verbose mode based on CLI flag
+    setVerbose(argv.verbose as boolean);
+    
     initLog(isNewRun);
     log("main", "Ralph starting", { plan: argv.plan, model: argv.model, reset: shouldReset });
     if (!argv.debug) {
@@ -676,6 +688,7 @@ async function main() {
     async function cleanup() {
       log("main", "cleanup() called");
       destroyRenderer();
+      stopMemoryLogging(); // Stop periodic memory snapshots
       clearInterval(keepaliveInterval);
 
       if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
