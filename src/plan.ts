@@ -6,11 +6,17 @@ import type { TaskStatus } from "./types/task-status";
  */
 
 export type PrdItem = {
+  /** Custom task identifier (e.g., "1.1.1") - if not provided, uses array index */
+  id?: string;
   category?: string;
   description: string;
   steps?: string[];
   passes: boolean;
   status?: TaskStatus;
+  /** Effort estimate (e.g., "XS", "S", "M", "L", "XL") */
+  effort?: string;
+  /** Risk level (e.g., "L", "M", "H" for Low/Medium/High) */
+  risk?: string;
 };
 
 
@@ -33,7 +39,7 @@ export type PlanProgress = {
  * Represents a single task from a plan file
  */
 export type Task = {
-  /** Unique identifier derived from line number */
+  /** Unique identifier derived from custom id or line number */
   id: string;
   /** Line number in the file (1-indexed) */
   line: number;
@@ -47,6 +53,14 @@ export type Task = {
   category?: string;
   /** Granular task status */
   status?: TaskStatus;
+  /** Effort estimate (e.g., "XS", "S", "M", "L", "XL") */
+  effort?: string;
+  /** Risk level (e.g., "L", "M", "H" for Low/Medium/High) */
+  risk?: string;
+  /** Original custom ID from PRD (if present) */
+  originalId?: string;
+  /** Verification steps from PRD */
+  steps?: string[];
 };
 
 
@@ -101,11 +115,14 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
     }
 
     normalized.push({
+      id: typeof candidate.id === "string" ? candidate.id : undefined,
       category: typeof candidate.category === "string" ? candidate.category : undefined,
       description,
       steps: steps as string[] | undefined,
       passes: candidate.passes as boolean,
       status: typeof candidate.status === "string" ? (candidate.status as TaskStatus) : undefined,
+      effort: typeof candidate.effort === "string" ? candidate.effort : undefined,
+      risk: typeof candidate.risk === "string" ? candidate.risk : undefined,
     });
   }
 
@@ -183,15 +200,21 @@ export async function parsePlanTasks(path: string): Promise<Task[]> {
   const prdItems = parsePrdItems(content);
   if (prdItems) {
     return prdItems.map((item, index) => {
-      // Map category/priority from PRD item if available
-      // Note: PrdItem currently only has category and description
+      // Use custom id if provided, otherwise generate prd-{index}
+      const fallbackId = `prd-${index + 1}`;
+      const taskId = item.id || fallbackId;
       return {
-        id: `prd-${index + 1}`,
+        id: taskId,
         line: index + 1,
         text: item.description,
         done: item.passes,
         category: item.category,
         status: item.status,
+        effort: item.effort,
+        risk: item.risk,
+        steps: item.steps,
+        // Store original custom ID for matching during save
+        originalId: item.id,
       };
     });
   }
@@ -335,14 +358,31 @@ export async function savePlanTasks(path: string, updatedTasks: Task[]): Promise
       }
 
       for (const task of updatedTasks) {
-        const match = task.id.match(/^prd-(\d+)$/);
-        if (match) {
-          const index = parseInt(match[1], 10) - 1;
-          if (items[index]) {
-            items[index].passes = task.done;
-            if (task.status) {
-              items[index].status = task.status;
-            }
+        // First try to match by original custom ID stored in the task
+        let matchedIndex = -1;
+        
+        if (task.originalId) {
+          // Match by custom ID field in items
+          matchedIndex = items.findIndex((item: any) => item.id === task.originalId);
+        }
+        
+        if (matchedIndex === -1) {
+          // Fallback: try to match by prd-{index} pattern
+          const match = task.id.match(/^prd-(\d+)$/);
+          if (match) {
+            matchedIndex = parseInt(match[1], 10) - 1;
+          }
+        }
+        
+        if (matchedIndex === -1 && !task.id.match(/^prd-\d+$/) && !task.originalId) {
+          // Try matching by the task id directly (it might be a custom ID like "1.1.1")
+          matchedIndex = items.findIndex((item: any) => item.id === task.id);
+        }
+        
+        if (matchedIndex >= 0 && items[matchedIndex]) {
+          items[matchedIndex].passes = task.done;
+          if (task.status) {
+            items[matchedIndex].status = task.status;
           }
         }
       }
