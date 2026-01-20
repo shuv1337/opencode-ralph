@@ -10,10 +10,10 @@ import { loadState, saveState, PersistedState, LoopOptions, trimEvents, LoopStat
 
 import { confirm } from "./prompt";
 import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
-import { startApp, destroyRenderer } from "./app";
+import { startApp, destroyRenderer, type AppStateSetters } from "./app";
 import { runLoop, cleanupDebugSession } from "./loop";
 import { runHeadlessMode } from "./headless";
-import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress } from "./init";
+import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress, isGeneratedPlugin, isGeneratedAgents } from "./init";
 import { initLog, log, stopMemoryLogging, logMemory, setVerbose } from "./lib/log";
 import { validatePlanFile } from "./plan";
 import { readFileSync, existsSync } from "fs";
@@ -103,10 +103,14 @@ function createBatchStateUpdater(
   let lastLogTime = Date.now();
   const LOG_INTERVAL_MS = 10000; // Log stats every 10 seconds
 
-  function flush() {
-    if (pendingUpdates.length === 0) return;
-    
-    const updates = pendingUpdates;
+    function flush() {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (pendingUpdates.length === 0) return;
+      
+      const updates = pendingUpdates;
     const batchSize = updates.length;
     pendingUpdates = [];
     timeoutId = null;
@@ -182,6 +186,8 @@ async function runReset(options: {
   planFile: string;
   progressFile: string;
   promptFile: string;
+  pluginFile: string;
+  agentsFile: string;
 }): Promise<ResetResult> {
   const { unlink } = await import("node:fs/promises");
   const result: ResetResult = { removed: [], skipped: [], errors: [] };
@@ -272,6 +278,32 @@ async function runReset(options: {
     }
   }
 
+  // 6. Check and remove generated plugin file
+  const pluginFile = Bun.file(options.pluginFile);
+  if (await pluginFile.exists()) {
+    const content = await pluginFile.text();
+    if (isGeneratedPlugin(content)) {
+      if (await safeRemove(options.pluginFile)) {
+        result.removed.push(options.pluginFile);
+      }
+    } else {
+      result.skipped.push(`${options.pluginFile} (user-created)`);
+    }
+  }
+
+  // 7. Check and remove generated AGENTS.md
+  const agentsFile = Bun.file(options.agentsFile);
+  if (await agentsFile.exists()) {
+    const content = await agentsFile.text();
+    if (isGeneratedAgents(content)) {
+      if (await safeRemove(options.agentsFile)) {
+        result.removed.push(options.agentsFile);
+      }
+    } else {
+      result.skipped.push(`${options.agentsFile} (user-created)`);
+    }
+  }
+
   return result;
 }
 
@@ -306,6 +338,11 @@ async function main() {
             description: "Overwrite existing files",
             default: false,
           })
+    )
+    .command(
+      "prune",
+      "Remove all Ralph-generated files and state",
+      (cmd) => cmd
     )
     .option("headless", {
       alias: "H",
@@ -452,12 +489,14 @@ async function main() {
     return;
   }
 
-  // Handle --reset flag: cleanup generated files and exit
-  if (argv.reset) {
+  // Handle prune command or --reset flag: cleanup generated files and exit
+  if (argv._[0] === "prune" || argv.reset) {
     const resetResult = await runReset({
       planFile: argv.plan,
       progressFile: argv.progress,
       promptFile: argv.promptFile as string,
+      pluginFile: ".opencode/plugin/ralph-write-guardrail.ts",
+      agentsFile: "AGENTS.md",
     });
 
     if (resetResult.removed.length > 0) {
@@ -473,7 +512,7 @@ async function main() {
     if (resetResult.errors.length > 0) {
       process.exitCode = 1;
     } else {
-      console.log("Reset complete. Run `ralph init` to reinitialize.");
+      console.log("Cleanup complete. Run `ralph init` to reinitialize.");
     }
     return;
   }
@@ -576,6 +615,8 @@ async function main() {
         initialCommitHash: headHash,
         iterationTimes: [],
         planFile: argv.plan,
+        totalPausedMs: 0,
+        lastSaveTime: Date.now(),
       };
       await saveState(stateToUse);
     } else {
@@ -684,9 +725,26 @@ async function main() {
     // Timeout for graceful shutdown (ms)
     const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000;
 
+    let appStateSetters: AppStateSetters | null = null;
+    const syncAndSaveState = async () => {
+      if (appStateSetters) {
+        const stats = appStateSetters.getPersistentStats();
+        stateToUse.totalPausedMs = stats.totalPausedMs;
+        stateToUse.lastSaveTime = stats.lastSaveTime;
+      }
+      await saveState(stateToUse);
+    };
+
     // Cleanup function for graceful shutdown
     async function cleanup() {
       log("main", "cleanup() called");
+      // Sync and save final state before shutting down
+      try {
+        await syncAndSaveState();
+        log("main", "Final state saved during cleanup");
+      } catch (err) {
+        log("main", "Failed to save state during cleanup", { error: String(err) });
+      }
       destroyRenderer();
       stopMemoryLogging(); // Stop periodic memory snapshots
       clearInterval(keepaliveInterval);
@@ -915,6 +973,7 @@ async function main() {
       onKeyboardEvent, // Task 4.3: Callback to detect if OpenTUI keyboard is working
       interruptHandler,
     });
+    appStateSetters = stateSetters;
 
     log("main", "TUI app started, state setters available");
 
@@ -927,6 +986,7 @@ async function main() {
     stateSetters.setState((prev) => ({
       ...prev,
       adapterMode,
+      projectDir: process.cwd(),
     }));
 
     // Fetch initial diff stats and commits on resume
@@ -975,14 +1035,31 @@ async function main() {
     log("main", "Starting loop (paused)");
     runLoopPromise = runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
-        log("main", "onIterationStart", { iteration });
-        stateSetters.setState((prev) => ({
+        log("main", "onIterationStart", { iteration, isIdle: false, status: "running" });
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "running",
           iteration,
+          isIdle: false, // Initial state for iteration: active (looping)
           // Clear any lingering spinners from previous (possibly failed) iterations
           events: prev.events.filter(e => e.type !== "spinner")
         }));
+        batchedUpdater.flushNow();
+        
+        // Force immediate render to ensure the "Looping..." status label appears
+        // This is critical for showing the iteration indicator at the bottom of EnhancedLog
+        stateSetters.requestRender();
+        
+        // Multi-stage render forcing for Windows where OpenTUI rendering can stall
+        // The scrollbox component may not update on first render request
+        if (process.platform === "win32") {
+          // First retry at 50ms to catch quick misses
+          setTimeout(() => stateSetters.requestRender(), 50);
+          // Second retry at 150ms for slower terminal updates
+          setTimeout(() => stateSetters.requestRender(), 150);
+          // Final retry at 300ms as safety net
+          setTimeout(() => stateSetters.requestRender(), 300);
+        }
       },
       onEvent: (event) => {
         // Debounce event updates to batch rapid events within window
@@ -1037,7 +1114,7 @@ async function main() {
         });
         // Update persisted state with the new iteration time
         stateToUse.iterationTimes.push(duration);
-        saveState(stateToUse);
+        syncAndSaveState();
         // Update the iteration times in the app for ETA calculation
         stateSetters.updateIterationTimes([...stateToUse.iterationTimes]);
         // Trigger render when iteration ends
@@ -1126,9 +1203,13 @@ async function main() {
           ...prev,
           isIdle,
         }));
-        // Trigger render when session becomes idle (completed processing)
-        if (isIdle) {
-          stateSetters.requestRender();
+        // Always trigger render on idle state change to ensure "Looping..." indicator updates
+        // Previously only rendered when isIdle=true, which caused the indicator to not appear
+        // when transitioning from idle to active (when iteration starts processing)
+        stateSetters.requestRender();
+        // Windows: Additional delayed render to ensure TUI updates properly
+        if (process.platform === "win32") {
+          setTimeout(() => stateSetters.requestRender(), 50);
         }
       },
       onSessionCreated: (session) => {
