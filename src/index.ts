@@ -712,7 +712,8 @@ async function main() {
     const isWindowsPlatform = process.platform === "win32";
     
     const keepaliveInterval = setInterval(() => {
-      // On Windows, send invisible cursor activity to prevent inactivity timeout
+      // Windows requires keepalive to prevent process termination in some terminals
+      // macOS doesn't need this - the event loop stays alive naturally
       if (isWindowsPlatform && process.stdout.isTTY) {
         // ESC 7 (save cursor) + ESC 8 (restore cursor) - invisible but counts as activity
         process.stdout.write("\x1b7\x1b8");
@@ -896,7 +897,12 @@ async function main() {
     // Reduced timeout on Windows where OpenTUI keyboard is less reliable.
     // We use a simple stdin data handler (NOT readline.emitKeypressEvents) to avoid
     // permanently modifying stdin's event emission behavior.
-    const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindows ? 2000 : 5000;
+    // Keyboard fallback timing varies by platform/terminal
+    // - Windows: 2s (onMount doesn't fire reliably)
+    // - Terminal.app: 3s (limited keyboard protocol support)
+    // - Other Unix: 5s (Kitty protocol usually works)
+    const isTerminalApp = process.platform === "darwin" && process.env.TERM_PROGRAM === "Apple_Terminal";
+    const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindows ? 2000 : isTerminalApp ? 3000 : 5000;
     
     /**
      * Permanently disable the fallback stdin handler.
@@ -1010,15 +1016,16 @@ async function main() {
       await requestQuit("SIGTERM");
     });
 
-    // Windows-specific: Handle SIGHUP for console close
-    // Windows sends SIGHUP when console window is closed
-    if (process.platform === "win32") {
+    // Handle SIGHUP for terminal close (Windows and macOS)
+    // On macOS, SIGHUP is sent when Terminal.app window closes
+    // On Windows, SIGHUP is sent when console window is closed
+    if (process.platform === "win32" || process.platform === "darwin") {
       process.on("SIGHUP", async () => {
         if (quitRequested) {
           log("main", "SIGHUP received but quit already requested, ignoring");
           return;
         }
-        log("main", "SIGHUP received (Windows console close)");
+        log("main", "SIGHUP received (terminal close)");
         await requestQuit("SIGHUP");
       });
     }
