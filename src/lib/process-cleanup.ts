@@ -903,7 +903,8 @@ async function findProcessByPortUnix(port: number): Promise<number | null> {
     log("cleanup", "lsof failed, trying fallback", { error: String(e) });
   }
   
-  // Strategy 2: Use ss (Linux) or netstat (macOS fallback)
+  // Strategy 2: Use ss on Linux only
+  // macOS: lsof is the only reliable method - netstat doesn't show PIDs
   if (!isMacOS) {
     // Linux: Use ss -tlnp (socket statistics)
     try {
@@ -930,34 +931,9 @@ async function findProcessByPortUnix(port: number): Promise<number | null> {
       log("cleanup", "ss failed", { error: String(e) });
     }
   } else {
-    // macOS fallback: Use netstat
-    try {
-      const proc = Bun.spawn(
-        ["netstat", "-anv", "-p", "tcp"],
-        { stdout: "pipe", stderr: "pipe" }
-      );
-      
-      const output = await new Response(proc.stdout).text();
-      await proc.exited;
-      
-      if (proc.exitCode === 0) {
-        const lines = output.split(/\n/);
-        for (const line of lines) {
-          // Look for LISTEN state and our port
-          if (line.includes("LISTEN") && line.includes(`.${port} `) || line.includes(`:${port} `)) {
-            // macOS netstat format varies, try to extract PID from last column
-            const parts = line.trim().split(/\s+/);
-            const pid = parseInt(parts[parts.length - 1], 10);
-            if (!isNaN(pid) && pid > 0) {
-              log("cleanup", "Found process by port (netstat macOS)", { port, pid });
-              return pid;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      log("cleanup", "macOS netstat failed", { error: String(e) });
-    }
+    // macOS: Skip netstat fallback - it doesn't show PIDs in its output
+    // lsof (Strategy 1) is the only reliable method on macOS
+    log("cleanup", "macOS: skipping netstat fallback (doesn't show PIDs)");
   }
   
   log("cleanup", "Could not find process by port on Unix", { port });
