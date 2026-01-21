@@ -32,12 +32,14 @@ import type { Plugin } from "@opencode-ai/plugin"
  * Protects user-configurable files from being overwritten or deleted by:
  * - Write tool: Blocks full file overwrites
  * - Bash tool: Blocks commands that overwrite/delete protected files
+ * - Edit tool on prd.json: Limited to ONE TASK per session (multiple edits to same task OK)
  * 
- * NOTE: Edit tool is NOT blocked. Agents should use surgical edits (Edit tool)
- * instead of destructive operations. This is intentional by design.
+ * The one-task-per-session rule for prd.json ensures Ralph makes focused,
+ * incremental progress. Multiple edits to the SAME task are allowed
+ * (e.g., pending → active → done lifecycle transitions).
  * 
  * Protected files by default:
- * - prd.json - The PRD plan file
+ * - prd.json - The PRD plan file (1 task per session)
  * - progress.txt - Progress tracking
  * - .ralph-prompt.md - Prompt template
  * - AGENTS.md - Agent configuration
@@ -52,6 +54,72 @@ const PROTECTED_FILES = [
   ".ralph-prompt.md",
   "AGENTS.md",
 ]
+
+// Session-level tracking for prd.json task edits
+// Tracks which task INDEX is being edited this session (resets when OpenCode restarts)
+// This allows multiple edits to the SAME task (e.g., pending → active → done)
+// but blocks editing DIFFERENT tasks in the same session
+let activeTaskIndex: number | null = null
+const PRD_FILE_NAME = "prd.json"
+
+/**
+ * Find which task index in prd.json contains the given content.
+ * Reads the file, parses JSON, and searches each item for the content.
+ * Returns the 0-based index of the matching task, or null if not found/ambiguous.
+ */
+async function findTaskIndexByContent(filePath: string, searchContent: string): Promise<number | null> {
+  if (!searchContent || searchContent.trim().length < 5) {
+    // Content too short to reliably match
+    return null
+  }
+  
+  try {
+    const file = Bun.file(filePath)
+    if (!(await file.exists())) return null
+    
+    const content = await file.text()
+    const parsed = JSON.parse(content)
+    const items: unknown[] = Array.isArray(parsed) ? parsed : (parsed?.items || null)
+    
+    if (!items || !Array.isArray(items)) return null
+    
+    const matches: number[] = []
+    
+    for (let i = 0; i < items.length; i++) {
+      const itemJson = JSON.stringify(items[i])
+      // Check if the search content is found within this item's JSON
+      // or if this item's content is found within the search content
+      if (itemJson.includes(searchContent) || searchContent.includes(itemJson)) {
+        matches.push(i)
+      }
+    }
+    
+    // Only return if exactly ONE item matches (unambiguous)
+    if (matches.length === 1) {
+      return matches[0]
+    }
+    
+    // If multiple or zero matches, try a more granular search
+    // Look for unique field combinations in the search content
+    if (matches.length === 0) {
+      // Try matching on significant substrings (description field values)
+      const descMatch = searchContent.match(/["']description["']\\s*:\\s*["']([^"']{15,})["']/)
+      if (descMatch) {
+        const desc = descMatch[1]
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i] as Record<string, unknown>
+          if (typeof item?.description === "string" && item.description.includes(desc)) {
+            return i
+          }
+        }
+      }
+    }
+    
+    return matches.length === 1 ? matches[0] : null
+  } catch {
+    return null
+  }
+}
 
 // Patterns for destructive bash commands targeting files
 const DESTRUCTIVE_COMMAND_PATTERNS = [
@@ -121,6 +189,13 @@ function wouldModifyProtectedFile(command: string): string | null {
 
 export const RalphWriteGuardrail: Plugin = async () => {
   return {
+    // Reset task tracking when a new session starts
+    // This prevents false positives when Ralph starts a new iteration
+    event: async ({ event }) => {
+      if (event.type === "session.created") {
+        activeTaskIndex = null
+      }
+    },
     "tool.execute.before": async (input, output) => {
       // Guard against write tool (full file overwrites)
       // Note: Edit tool is NOT blocked - surgical edits are the preferred approach
@@ -149,6 +224,45 @@ export const RalphWriteGuardrail: Plugin = async () => {
               \`Command: \${command}\\n\` +
               \`This file is managed by Ralph and should not be modified by shell commands.\`
             )
+          }
+        }
+      }
+
+      // Guard against editing DIFFERENT tasks in prd.json within a single session
+      // Ralph should focus on ONE task per iteration, but can make multiple edits to that task
+      // (e.g., pending → active → done lifecycle is allowed)
+      if (input.tool === "edit") {
+        const filePath = output.args?.filePath as string | undefined
+        if (filePath) {
+          const normalizedPath = filePath.replace(/\\\\/g, "/")
+          const isPrdFile = normalizedPath === PRD_FILE_NAME || 
+                           normalizedPath.endsWith("/" + PRD_FILE_NAME) ||
+                           normalizedPath.endsWith("\\\\" + PRD_FILE_NAME)
+          
+          if (isPrdFile) {
+            // Find which task is being edited by matching oldString against file content
+            const oldString = output.args?.oldString as string | undefined
+            
+            if (oldString && oldString.length >= 5) {
+              const taskIndex = await findTaskIndexByContent(filePath, oldString)
+              
+              if (taskIndex !== null) {
+                if (activeTaskIndex === null) {
+                  // First edit this session - record the task index
+                  activeTaskIndex = taskIndex
+                } else if (activeTaskIndex !== taskIndex) {
+                  // Trying to edit a DIFFERENT task - block it
+                  throw new Error(
+                    \`[Ralph Guardrail] Cannot edit multiple tasks in prd.json in a single session. \\\\n\` +
+                    \`You are already working on task at index \${activeTaskIndex}. \\\\n\` +
+                    \`Attempted to edit task at index \${taskIndex}. \\\\n\` +
+                    \`Complete the current task first, then Ralph will start a new iteration for the next task.\`
+                  )
+                }
+                // Same task index - allow the edit (supports status lifecycle changes)
+              }
+              // If we couldn't determine task index, allow the edit (fail-open for edge cases)
+            }
           }
         }
       }
