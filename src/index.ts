@@ -16,6 +16,7 @@ import { runHeadlessMode } from "./headless";
 import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress, isGeneratedPlugin, isGeneratedAgents } from "./init";
 import { initLog, log, stopMemoryLogging, logMemory, setVerbose } from "./lib/log";
 import { validatePlanFile } from "./plan";
+import { forceTerminateDescendants } from "./lib/process-cleanup";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -308,6 +309,10 @@ async function runReset(options: {
 }
 
 async function main() {
+  // Prevent OpenTUI from leaking console logs into a JS array.
+  // This is a critical fix for the observed native memory growth.
+  process.env.OTUI_USE_CONSOLE = "false";
+
   // Add global error handlers early to catch any issues
   process.on("uncaughtException", (err) => {
     log("main", "UNCAUGHT EXCEPTION", { error: err.message, stack: err.stack });
@@ -705,6 +710,7 @@ async function main() {
     // This interval ensures the process stays alive until explicitly exited
     // On Windows, also send a minimal cursor save/restore sequence to keep console active
     const isWindowsPlatform = process.platform === "win32";
+    
     const keepaliveInterval = setInterval(() => {
       // On Windows, send invisible cursor activity to prevent inactivity timeout
       if (isWindowsPlatform && process.stdout.isTTY) {
@@ -738,6 +744,61 @@ async function main() {
     // Cleanup function for graceful shutdown
     async function cleanup() {
       log("main", "cleanup() called");
+      
+      // STEP 1: Signal the loop to stop and wait for it to cleanup its own resources
+      // This allows the loop's cleanupServerAndSessions() to run first, which properly
+      // closes the server and its child processes.
+      log("main", "STEP 1: Signaling loop to abort...");
+      abortController.abort();
+      
+      // Wait for runLoop to finish its cleanup (with timeout)
+      if (runLoopPromise) {
+        log("main", "Waiting for runLoop to finish its cleanup...");
+        const timeoutPromise = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            log("main", `runLoop cleanup timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms`);
+            resolve();
+          }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+        });
+        
+        try {
+          await Promise.race([runLoopPromise, timeoutPromise]);
+          log("main", "runLoop finished (or timed out)");
+        } catch (error) {
+          // Ignore errors from runLoop during shutdown - they're expected when aborting
+          log("main", "runLoop error during shutdown (expected)", { 
+            error: error instanceof Error ? error.message : String(error) 
+          });
+        }
+      }
+      
+      // Brief pause to let processes fully terminate after loop cleanup
+      await Bun.sleep(300);
+      
+      // STEP 2: Force terminate any remaining child processes 
+      // This catches any processes that survived the loop's cleanup
+      log("main", "STEP 2: Force terminating remaining child processes...");
+      try {
+        const cleanupResult = await forceTerminateDescendants();
+        if (cleanupResult.terminatedPids.length > 0) {
+          log("main", "Child processes terminated", { 
+            count: cleanupResult.terminatedPids.length,
+            pids: cleanupResult.terminatedPids 
+          });
+        }
+        if (cleanupResult.errors.length > 0) {
+          log("main", "Cleanup errors (non-fatal)", { errors: cleanupResult.errors });
+        }
+      } catch (err) {
+        log("main", "Error during child process cleanup", { error: String(err) });
+      }
+      
+      // Brief pause to let processes fully terminate
+      await Bun.sleep(200);
+      
+      // STEP 3: Save state and cleanup TUI resources
+      log("main", "STEP 3: Saving state and cleaning up resources...");
+      
       // Sync and save final state before shutting down
       try {
         await syncAndSaveState();
@@ -766,33 +827,38 @@ async function main() {
         }
       }
       
-      // SUBTASK-002: Abort the loop and wait for it to finish cleanup
-      log("main", "Aborting loop and waiting for cleanup...");
-      abortController.abort();
+      // CRITICAL FIX: Pause stdin to release event loop handle
+      // Without this, the process won't exit on Windows because stdin.resume() keeps the event loop alive
+      try {
+        process.stdin.pause();
+        log("main", "stdin paused to release event loop handle");
+      } catch {
+        // Ignore errors - stdin may already be closed
+      }
       
-      // Wait for runLoop to finish with a timeout
-      if (runLoopPromise) {
-        log("main", "Waiting for runLoop to finish...");
-        const timeoutPromise = new Promise<void>((resolve) => {
-          setTimeout(() => {
-            log("main", `runLoop cleanup timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms`);
-            resolve();
-          }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
-        });
-        
-        try {
-          await Promise.race([runLoopPromise, timeoutPromise]);
-          log("main", "runLoop finished (or timed out)");
-        } catch (error) {
-          // Ignore errors from runLoop during shutdown - they're expected when aborting
-          log("main", "runLoop error during shutdown (expected)", { 
-            error: error instanceof Error ? error.message : String(error) 
-          });
-        }
+      // STEP 4: Final cleanup sweep - catch any stragglers
+      log("main", "STEP 4: Final cleanup sweep...");
+      try {
+        await forceTerminateDescendants();
+      } catch {
+        // Ignore errors in final sweep
       }
       
       await lock.release();
-      log("main", "cleanup() done");
+      log("main", "cleanup() done - all steps completed");
+      
+      // CRITICAL: Hard exit failsafe for Windows
+      // Even after all cleanup, Windows may still have event loop handles that prevent exit
+      // (e.g., OpenTUI internal handlers, pending I/O, etc.)
+      // Set a hard exit timeout to ensure the process terminates
+      if (process.platform === "win32") {
+        const HARD_EXIT_TIMEOUT_MS = 3000;
+        log("main", `Windows: Setting hard exit failsafe (${HARD_EXIT_TIMEOUT_MS}ms)`);
+        setTimeout(() => {
+          log("main", "Hard exit failsafe triggered - forcing exit");
+          process.exit(0);
+        }, HARD_EXIT_TIMEOUT_MS).unref(); // unref() so it doesn't keep event loop alive by itself
+      }
     }
 
     // Fallback quit handler (useful if TUI key events fail)
@@ -978,8 +1044,9 @@ async function main() {
     log("main", "TUI app started, state setters available");
 
     // Create batched updater for coalescing rapid state changes
-    // Use 100ms debounce for better batching during high event throughput
-    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 100);
+    // Use 50ms debounce (matching OpenTUI's responsive design) for snappy UI updates
+    // while still batching rapid events. Critical updates use flushNow() for immediate feedback.
+    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 50);
     const MAX_TERMINAL_BUFFER = config.ui.maxTerminalBuffer;
 
 
@@ -1079,7 +1146,10 @@ async function main() {
             others.push(spinner);
           }
           
-          return { events: trimEvents(others) };
+          // OPTIMIZATION: Trim events to prevent memory bloat (Inspired by OpenCode part cleaning)
+          const trimmed = trimEvents(others);
+          
+          return { events: trimmed };
         });
       },
       onRawOutput: (data) => {
