@@ -9,6 +9,7 @@ export type ToolCategory =
   | 'planning'    // task, todowrite, todoread
   | 'reasoning'   // thought, analyze
   | 'system'      // lsp, config
+  | 'mcp'         // MCP server tools (e.g., tavily_search, context7_query-docs)
   | 'custom';     // user-defined tools
 
 /**
@@ -172,16 +173,91 @@ export const TOOL_CLASSIFICATIONS: Record<string, ToolClassification> = {
 };
 
 /**
+ * Check if a tool name follows the MCP naming convention.
+ * MCP tools are named as: serverName_toolName (e.g., tavily_search, context7_query-docs)
+ * 
+ * @param toolName - The tool name to check
+ * @returns Object with isMcp flag and parsed server/tool names if it's an MCP tool
+ */
+export function parseMcpToolName(toolName: string): {
+  isMcp: boolean;
+  serverName?: string;
+  actionName?: string;
+  serverDisplayName?: string;
+} {
+  // MCP tools follow the pattern: serverName_actionName
+  // The serverName is alphanumeric (sanitized), and actionName can have dashes
+  const match = toolName.match(/^([a-zA-Z][a-zA-Z0-9]*)_([a-zA-Z0-9_-]+)$/);
+  
+  if (!match) {
+    return { isMcp: false };
+  }
+
+  const serverName = match[1].toLowerCase();
+  const actionName = match[2];
+
+  return {
+    isMcp: true,
+    serverName,
+    actionName,
+    serverDisplayName: capitalizeFirst(serverName),
+  };
+}
+
+/**
+ * Capitalize the first letter of a string.
+ */
+function capitalizeFirst(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Format a tool action name for display.
+ * Converts snake_case and kebab-case to Title Case.
+ */
+function formatActionName(actionName: string): string {
+  return actionName
+    .split(/[-_]/)
+    .map(word => capitalizeFirst(word))
+    .join(' ');
+}
+
+/**
  * Get classification for a tool by name.
+ * Handles built-in tools, MCP tools, and custom tools.
  */
 export function getToolClassification(toolName: string): ToolClassification {
   const normalized = toolName.toLowerCase();
-  return TOOL_CLASSIFICATIONS[normalized] || {
+  
+  // Check for built-in tool first
+  const builtIn = TOOL_CLASSIFICATIONS[normalized];
+  if (builtIn) {
+    return builtIn;
+  }
+
+  // Check if it's an MCP tool
+  const mcpInfo = parseMcpToolName(toolName);
+  if (mcpInfo.isMcp) {
+    const displayName = `${mcpInfo.serverDisplayName}: ${formatActionName(mcpInfo.actionName!)}`;
+    return {
+      category: 'mcp',
+      displayName,
+      description: `MCP tool from ${mcpInfo.serverDisplayName}`,
+      color: 'toolMcp',
+      icon: '󰌘',  // Nerd Font plug/connection icon
+      fallbackIcon: `[${mcpInfo.serverDisplayName?.toUpperCase()}]`,
+      animated: true,
+      verboseDefault: false,
+    };
+  }
+
+  // Fallback to custom tool
+  return {
     category: 'custom',
     displayName: toolName,
     description: 'Custom tool',
     color: 'text',
-    icon: '',  // Nerd Font box
+    icon: '󰏗',  // Nerd Font package icon (better than box)
     fallbackIcon: `[${toolName.toUpperCase()}]`,
     animated: false,
     verboseDefault: false,
