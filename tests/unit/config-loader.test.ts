@@ -36,10 +36,14 @@ describe("Config Loader", () => {
 
   describe("loadConfig", () => {
     it("should return defaults when config file does not exist", () => {
-      // Load from non-existent path (uses default path logic)
-      const config = loadConfig();
+      // Load from a path that definitely doesn't exist
+      // Note: loadConfig without args reads from ~/.config/ralph/config.json
+      // So we test with a non-existent relative path to get pure defaults
+      const nonExistentPath = join(testConfigDir, "definitely-does-not-exist", "config.json");
+      const relativePath = nonExistentPath.replace(process.cwd() + "/", "");
+      const config = loadConfig(relativePath);
       
-      // Should have defaults
+      // Should have schema defaults
       expect(config.model).toBe("opencode/claude-opus-4-5");
       expect(config.adapter).toBe("opencode-server");
     });
