@@ -31,15 +31,18 @@ export function Footer(props: FooterProps) {
     const isCompact = width < 80;
     const hideTokens = width < 100;
     const hideDiff = width < 70;
+    // Extremely narrow: hide all stats except shortcuts
+    const hideAllStats = width < 50;
     
-    // Available width for shortcuts (total - stats - padding)
-    const statsWidth = (hideTokens ? 0 : 25) + (hideDiff ? 0 : 15) + 10;
-    const availableShortcuts = width - statsWidth - 4;
+    // Available width for shortcuts (total - stats - padding - borders)
+    const statsWidth = hideAllStats ? 0 : (hideTokens ? 0 : 25) + (hideDiff ? 0 : 15) + 12;
+    const availableShortcuts = Math.max(0, width - statsWidth - 4);
     
     return {
       isCompact,
       hideTokens,
       hideDiff,
+      hideAllStats,
       availableShortcuts
     };
   });
@@ -98,6 +101,7 @@ export function Footer(props: FooterProps) {
       paddingRight={1}
       border
       borderColor={t().border}
+      overflow="hidden"
     >
       <box flexShrink={1} overflow="hidden">
         <text fg={t().textMuted}>{shortcutText()}</text>
@@ -105,38 +109,40 @@ export function Footer(props: FooterProps) {
 
       <box flexGrow={1} />
 
-      <box flexDirection="row" gap={1} flexShrink={0}>
-        {props.tokens && (props.tokens.input > 0 || props.tokens.output > 0) && !layoutMetrics().hideTokens && (
-          <>
-            <text fg={t().textMuted}>Tokens:</text>
-            <text fg={t().secondary}>{formatNumber(props.tokens.input)}in</text>
-            <text fg={t().textMuted}>/</text>
-            <text fg={t().secondary}>{formatNumber(props.tokens.output)}out</text>
-            {/* Use optional chaining to guard against SolidJS reactivity race:
-                tokens may become undefined mid-render when onSessionEnded fires */}
-            {props.tokens?.reasoning != null && props.tokens.reasoning > 0 && (
-              <>
-                <text fg={t().textMuted}>/</text>
-                <text fg={t().secondary}>{formatNumber(props.tokens.reasoning)}r</text>
-              </>
-            )}
-            <text fg={t().textMuted}> │ </text>
-          </>
-        )}
-        
-        {!layoutMetrics().hideDiff && (
-          <>
-            <text fg={t().textMuted}>Diff:</text>
-            <text fg={t().success}>+{props.linesAdded}</text>
-            <text fg={t().textMuted}>/</text>
-            <text fg={t().error}>-{props.linesRemoved}</text>
-            <text fg={t().textMuted}> │ </text>
-          </>
-        )}
-        
-        <text fg={t().textMuted}>Commits:</text>
-        <text fg={t().primary}>{props.commits}</text>
-      </box>
+      {!layoutMetrics().hideAllStats && (
+        <box flexDirection="row" gap={1} flexShrink={1} overflow="hidden">
+          {props.tokens && (props.tokens.input > 0 || props.tokens.output > 0) && !layoutMetrics().hideTokens && (
+            <>
+              <text fg={t().textMuted}>Tokens:</text>
+              <text fg={t().secondary}>{formatNumber(props.tokens.input)}in</text>
+              <text fg={t().textMuted}>/</text>
+              <text fg={t().secondary}>{formatNumber(props.tokens.output)}out</text>
+              {/* Use optional chaining to guard against SolidJS reactivity race:
+                  tokens may become undefined mid-render when onSessionEnded fires */}
+              {props.tokens?.reasoning != null && props.tokens.reasoning > 0 && (
+                <>
+                  <text fg={t().textMuted}>/</text>
+                  <text fg={t().secondary}>{formatNumber(props.tokens.reasoning)}r</text>
+                </>
+              )}
+              <text fg={t().textMuted}> │ </text>
+            </>
+          )}
+          
+          {!layoutMetrics().hideDiff && (
+            <>
+              <text fg={t().textMuted}>Diff:</text>
+              <text fg={t().success}>+{props.linesAdded}</text>
+              <text fg={t().textMuted}>/</text>
+              <text fg={t().error}>-{props.linesRemoved}</text>
+              <text fg={t().textMuted}> │ </text>
+            </>
+          )}
+          
+          <text fg={t().textMuted}>Commits:</text>
+          <text fg={t().primary}>{props.commits}</text>
+        </box>
+      )}
     </box>
   );
 }
