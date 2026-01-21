@@ -60,6 +60,8 @@ export type AppStateSetters = {
   requestRender: () => void;
   /** Trigger immediate task list refresh (for real-time plan file updates) */
   triggerTaskRefresh: () => void;
+  /** Get current timing stats for persistence */
+  getPersistentStats: () => { totalPausedMs: number; lastSaveTime: number };
 };
 
 /**
@@ -76,6 +78,7 @@ let globalUpdateIterationTimes: ((times: number[]) => void) | null = null;
 let globalSendMessage: ((message: string) => Promise<void>) | null = null;
 let globalRenderer: ReturnType<typeof useRenderer> | null = null;
 let globalTriggerTaskRefresh: (() => void) | null = null;
+let globalGetPersistentStats: (() => { totalPausedMs: number; lastSaveTime: number }) | null = null;
 let rendererDestroyed = false;
 
 export function destroyRenderer(): void {
@@ -85,6 +88,14 @@ export function destroyRenderer(): void {
   rendererDestroyed = true;
   globalRenderer.setTerminalTitle("");
   globalRenderer.destroy();
+
+  // Null out global references to allow garbage collection
+  globalSetState = null;
+  globalUpdateIterationTimes = null;
+  globalSendMessage = null;
+  globalRenderer = null;
+  globalTriggerTaskRefresh = null;
+  globalGetPersistentStats = null;
 }
 
 /**
@@ -193,6 +204,12 @@ export async function startApp(props: StartAppProps): Promise<StartAppResult> {
         globalTriggerTaskRefresh();
       }
     },
+    getPersistentStats: () => {
+      if (globalGetPersistentStats) {
+        return globalGetPersistentStats();
+      }
+      return { totalPausedMs: 0, lastSaveTime: Date.now() };
+    },
   };
 
   return { exitPromise, stateSetters };
@@ -231,7 +248,9 @@ export function App(props: AppProps) {
   // Initialize loop stats with persisted state
   loopStats.initialize(
     props.persistedState.startTime,
-    props.persistedState.iterationTimes
+    props.persistedState.iterationTimes,
+    props.persistedState.totalPausedMs,
+    props.persistedState.lastSaveTime
   );
   
   // State signal for loop state (legacy - being migrated to loopStore)
@@ -335,6 +354,8 @@ export function App(props: AppProps) {
   };
   // Export refreshTasks for real-time plan file updates
   globalTriggerTaskRefresh = refreshTasks;
+  // Export getPersistentStats for accurate timing persistence
+  globalGetPersistentStats = () => loopStats.getPersistentStats();
 
   // Update elapsed time and ETA periodically (5000ms to reduce render frequency)
   // Uses loopStats hook for pause-aware elapsed time tracking
@@ -353,12 +374,17 @@ export function App(props: AppProps) {
 
   onCleanup(() => {
     clearInterval(elapsedInterval);
+    // Note: destroyRenderer() is called here, which already nulls out
+    // the global references. We keep the explicit nulling below for
+    // additional safety in case destroyRenderer() behavior changes.
     destroyRenderer();
+    
     // Clean up module-level references
     globalSetState = null;
     globalUpdateIterationTimes = null;
     globalTriggerTaskRefresh = null;
     globalRenderer = null;
+    globalSendMessage = null; // Also clear sendMessage
   });
 
   // Pause file path
@@ -378,6 +404,12 @@ export function App(props: AppProps) {
       loopStats.resume();
       // Also update legacy state for external compatibility
       setStateAndRender((prev) => ({ ...prev, status: "running" }));
+      // Windows: Force additional render requests to ensure TUI updates
+      // The scrollbox component may need multiple render cycles to update
+      if (process.platform === "win32") {
+        setTimeout(() => renderer.requestRender?.(), 50);
+        setTimeout(() => renderer.requestRender?.(), 150);
+      }
     } else {
       // Pause: create pause file and update status via dispatch
       await Bun.write(PAUSE_FILE, String(process.pid));
@@ -656,6 +688,10 @@ function AppContent(props: AppContentProps) {
         line: task.line,
         priority: task.priority,
         category: task.category,
+        effort: task.effort,
+        risk: task.risk,
+        originalId: task.originalId,
+        steps: task.steps,
       };
     })
   );
@@ -962,6 +998,33 @@ function AppContent(props: AppContentProps) {
         description: "Set fallback models for rate limit handling",
         onSelect: () => {
           queueMicrotask(() => showFallbackAgentDialog());
+        },
+      },
+    ]);
+
+    // Register "Write heap snapshot" command (Inspired by recent OpenCode update)
+    command.register("heapSnapshot", () => [
+      {
+        title: "Write heap snapshot",
+        value: "heapSnapshot",
+        description: "Write a V8 heap snapshot to disk for memory debugging",
+        onSelect: async () => {
+          try {
+            const { writeHeapSnapshot } = await import("v8");
+            const path = writeHeapSnapshot();
+            toast.show({
+              variant: "info",
+              message: `Heap snapshot written to ${path}`,
+              duration: 5000,
+            });
+            log("app", "Heap snapshot written", { path });
+          } catch (err) {
+            log("app", "Failed to write heap snapshot", { error: String(err) });
+            toast.show({
+              variant: "error",
+              message: "Failed to write heap snapshot",
+            });
+          }
         },
       },
     ]);
@@ -1690,6 +1753,7 @@ function AppContent(props: AppContentProps) {
           sandboxConfig={props.state().sandboxConfig}
           activeAgentState={props.state().activeAgentState}
           rateLimitState={props.state().rateLimitState}
+          projectDir={props.state().projectDir}
         />
         {showDashboard() && (
           <ProgressDashboard
@@ -1701,6 +1765,7 @@ function AppContent(props: AppContentProps) {
             currentTaskTitle={currentTask()?.title}
             currentModel={props.state().currentModel}
             sandboxConfig={props.state().sandboxConfig}
+            projectDir={props.state().projectDir}
           />
         )}
       <box

@@ -37,6 +37,14 @@ export type UiTask = {
   category?: string;
   /** Acceptance criteria items parsed from description */
   acceptanceCriteria?: string;
+  /** Effort estimate (e.g., "XS", "S", "M", "L", "XL") */
+  effort?: string;
+  /** Risk level (e.g., "L", "M", "H" for Low/Medium/High) */
+  risk?: string;
+  /** Original custom ID from PRD (e.g., "1.1.1") */
+  originalId?: string;
+  /** Verification steps from PRD */
+  steps?: string[];
 };
 
 /**

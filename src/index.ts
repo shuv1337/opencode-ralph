@@ -10,12 +10,13 @@ import { loadState, saveState, PersistedState, LoopOptions, trimEvents, LoopStat
 
 import { confirm } from "./prompt";
 import { getHeadHash, getDiffStats, getCommitsSince } from "./git";
-import { startApp, destroyRenderer } from "./app";
+import { startApp, destroyRenderer, type AppStateSetters } from "./app";
 import { runLoop, cleanupDebugSession } from "./loop";
 import { runHeadlessMode } from "./headless";
-import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress } from "./init";
-import { initLog, log } from "./lib/log";
+import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress, isGeneratedPlugin, isGeneratedAgents } from "./init";
+import { initLog, log, stopMemoryLogging, logMemory, setVerbose } from "./lib/log";
 import { validatePlanFile } from "./plan";
+import { forceTerminateDescendants } from "./lib/process-cleanup";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -103,10 +104,14 @@ function createBatchStateUpdater(
   let lastLogTime = Date.now();
   const LOG_INTERVAL_MS = 10000; // Log stats every 10 seconds
 
-  function flush() {
-    if (pendingUpdates.length === 0) return;
-    
-    const updates = pendingUpdates;
+    function flush() {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (pendingUpdates.length === 0) return;
+      
+      const updates = pendingUpdates;
     const batchSize = updates.length;
     pendingUpdates = [];
     timeoutId = null;
@@ -122,6 +127,9 @@ function createBatchStateUpdater(
         avgBatchSize,
         currentBatchSize: batchSize,
       });
+
+      // Log memory usage periodically with batching stats
+      logMemory("Periodic snapshot");
       lastLogTime = now;
     }
 
@@ -179,6 +187,8 @@ async function runReset(options: {
   planFile: string;
   progressFile: string;
   promptFile: string;
+  pluginFile: string;
+  agentsFile: string;
 }): Promise<ResetResult> {
   const { unlink } = await import("node:fs/promises");
   const result: ResetResult = { removed: [], skipped: [], errors: [] };
@@ -269,10 +279,40 @@ async function runReset(options: {
     }
   }
 
+  // 6. Check and remove generated plugin file
+  const pluginFile = Bun.file(options.pluginFile);
+  if (await pluginFile.exists()) {
+    const content = await pluginFile.text();
+    if (isGeneratedPlugin(content)) {
+      if (await safeRemove(options.pluginFile)) {
+        result.removed.push(options.pluginFile);
+      }
+    } else {
+      result.skipped.push(`${options.pluginFile} (user-created)`);
+    }
+  }
+
+  // 7. Check and remove generated AGENTS.md
+  const agentsFile = Bun.file(options.agentsFile);
+  if (await agentsFile.exists()) {
+    const content = await agentsFile.text();
+    if (isGeneratedAgents(content)) {
+      if (await safeRemove(options.agentsFile)) {
+        result.removed.push(options.agentsFile);
+      }
+    } else {
+      result.skipped.push(`${options.agentsFile} (user-created)`);
+    }
+  }
+
   return result;
 }
 
 async function main() {
+  // Prevent OpenTUI from leaking console logs into a JS array.
+  // This is a critical fix for the observed native memory growth.
+  process.env.OTUI_USE_CONSOLE = "false";
+
   // Add global error handlers early to catch any issues
   process.on("uncaughtException", (err) => {
     log("main", "UNCAUGHT EXCEPTION", { error: err.message, stack: err.stack });
@@ -303,6 +343,11 @@ async function main() {
             description: "Overwrite existing files",
             default: false,
           })
+    )
+    .command(
+      "prune",
+      "Remove all Ralph-generated files and state",
+      (cmd) => cmd
     )
     .option("headless", {
       alias: "H",
@@ -408,6 +453,12 @@ async function main() {
       description: "Force acquire session lock",
       default: false,
     })
+    .option("verbose", {
+      alias: "V",
+      type: "boolean",
+      description: "Enable verbose debug logging to file",
+      default: false,
+    })
     .option("fallback-agent", {
       type: "array",
       string: true,
@@ -443,12 +494,14 @@ async function main() {
     return;
   }
 
-  // Handle --reset flag: cleanup generated files and exit
-  if (argv.reset) {
+  // Handle prune command or --reset flag: cleanup generated files and exit
+  if (argv._[0] === "prune" || argv.reset) {
     const resetResult = await runReset({
       planFile: argv.plan,
       progressFile: argv.progress,
       promptFile: argv.promptFile as string,
+      pluginFile: ".opencode/plugin/ralph-write-guardrail.ts",
+      agentsFile: "AGENTS.md",
     });
 
     if (resetResult.removed.length > 0) {
@@ -464,7 +517,7 @@ async function main() {
     if (resetResult.errors.length > 0) {
       process.exitCode = 1;
     } else {
-      console.log("Reset complete. Run `ralph init` to reinitialize.");
+      console.log("Cleanup complete. Run `ralph init` to reinitialize.");
     }
     return;
   }
@@ -549,6 +602,9 @@ async function main() {
 
     // Initialize logging (reset log when state is reset)
     const isNewRun = !stateToUse;
+    // Set verbose mode based on CLI flag
+    setVerbose(argv.verbose as boolean);
+    
     initLog(isNewRun);
     log("main", "Ralph starting", { plan: argv.plan, model: argv.model, reset: shouldReset });
     if (!argv.debug) {
@@ -564,6 +620,8 @@ async function main() {
         initialCommitHash: headHash,
         iterationTimes: [],
         planFile: argv.plan,
+        totalPausedMs: 0,
+        lastSaveTime: Date.now(),
       };
       await saveState(stateToUse);
     } else {
@@ -652,8 +710,10 @@ async function main() {
     // This interval ensures the process stays alive until explicitly exited
     // On Windows, also send a minimal cursor save/restore sequence to keep console active
     const isWindowsPlatform = process.platform === "win32";
+    
     const keepaliveInterval = setInterval(() => {
-      // On Windows, send invisible cursor activity to prevent inactivity timeout
+      // Windows requires keepalive to prevent process termination in some terminals
+      // macOS doesn't need this - the event loop stays alive naturally
       if (isWindowsPlatform && process.stdout.isTTY) {
         // ESC 7 (save cursor) + ESC 8 (restore cursor) - invisible but counts as activity
         process.stdout.write("\x1b7\x1b8");
@@ -672,10 +732,83 @@ async function main() {
     // Timeout for graceful shutdown (ms)
     const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 5000;
 
+    let appStateSetters: AppStateSetters | null = null;
+    const syncAndSaveState = async () => {
+      if (appStateSetters) {
+        const stats = appStateSetters.getPersistentStats();
+        stateToUse.totalPausedMs = stats.totalPausedMs;
+        stateToUse.lastSaveTime = stats.lastSaveTime;
+      }
+      await saveState(stateToUse);
+    };
+
     // Cleanup function for graceful shutdown
     async function cleanup() {
       log("main", "cleanup() called");
+      
+      // STEP 1: Signal the loop to stop and wait for it to cleanup its own resources
+      // This allows the loop's cleanupServerAndSessions() to run first, which properly
+      // closes the server and its child processes.
+      log("main", "STEP 1: Signaling loop to abort...");
+      abortController.abort();
+      
+      // Wait for runLoop to finish its cleanup (with timeout)
+      if (runLoopPromise) {
+        log("main", "Waiting for runLoop to finish its cleanup...");
+        const timeoutPromise = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            log("main", `runLoop cleanup timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms`);
+            resolve();
+          }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
+        });
+        
+        try {
+          await Promise.race([runLoopPromise, timeoutPromise]);
+          log("main", "runLoop finished (or timed out)");
+        } catch (error) {
+          // Ignore errors from runLoop during shutdown - they're expected when aborting
+          log("main", "runLoop error during shutdown (expected)", { 
+            error: error instanceof Error ? error.message : String(error) 
+          });
+        }
+      }
+      
+      // Brief pause to let processes fully terminate after loop cleanup
+      await Bun.sleep(300);
+      
+      // STEP 2: Force terminate any remaining child processes 
+      // This catches any processes that survived the loop's cleanup
+      log("main", "STEP 2: Force terminating remaining child processes...");
+      try {
+        const cleanupResult = await forceTerminateDescendants();
+        if (cleanupResult.terminatedPids.length > 0) {
+          log("main", "Child processes terminated", { 
+            count: cleanupResult.terminatedPids.length,
+            pids: cleanupResult.terminatedPids 
+          });
+        }
+        if (cleanupResult.errors.length > 0) {
+          log("main", "Cleanup errors (non-fatal)", { errors: cleanupResult.errors });
+        }
+      } catch (err) {
+        log("main", "Error during child process cleanup", { error: String(err) });
+      }
+      
+      // Brief pause to let processes fully terminate
+      await Bun.sleep(200);
+      
+      // STEP 3: Save state and cleanup TUI resources
+      log("main", "STEP 3: Saving state and cleaning up resources...");
+      
+      // Sync and save final state before shutting down
+      try {
+        await syncAndSaveState();
+        log("main", "Final state saved during cleanup");
+      } catch (err) {
+        log("main", "Failed to save state during cleanup", { error: String(err) });
+      }
       destroyRenderer();
+      stopMemoryLogging(); // Stop periodic memory snapshots
       clearInterval(keepaliveInterval);
 
       if (fallbackTimeout) clearTimeout(fallbackTimeout); // Task 4.3: Clean up fallback timeout
@@ -695,33 +828,38 @@ async function main() {
         }
       }
       
-      // SUBTASK-002: Abort the loop and wait for it to finish cleanup
-      log("main", "Aborting loop and waiting for cleanup...");
-      abortController.abort();
+      // CRITICAL FIX: Pause stdin to release event loop handle
+      // Without this, the process won't exit on Windows because stdin.resume() keeps the event loop alive
+      try {
+        process.stdin.pause();
+        log("main", "stdin paused to release event loop handle");
+      } catch {
+        // Ignore errors - stdin may already be closed
+      }
       
-      // Wait for runLoop to finish with a timeout
-      if (runLoopPromise) {
-        log("main", "Waiting for runLoop to finish...");
-        const timeoutPromise = new Promise<void>((resolve) => {
-          setTimeout(() => {
-            log("main", `runLoop cleanup timed out after ${GRACEFUL_SHUTDOWN_TIMEOUT_MS}ms`);
-            resolve();
-          }, GRACEFUL_SHUTDOWN_TIMEOUT_MS);
-        });
-        
-        try {
-          await Promise.race([runLoopPromise, timeoutPromise]);
-          log("main", "runLoop finished (or timed out)");
-        } catch (error) {
-          // Ignore errors from runLoop during shutdown - they're expected when aborting
-          log("main", "runLoop error during shutdown (expected)", { 
-            error: error instanceof Error ? error.message : String(error) 
-          });
-        }
+      // STEP 4: Final cleanup sweep - catch any stragglers
+      log("main", "STEP 4: Final cleanup sweep...");
+      try {
+        await forceTerminateDescendants();
+      } catch {
+        // Ignore errors in final sweep
       }
       
       await lock.release();
-      log("main", "cleanup() done");
+      log("main", "cleanup() done - all steps completed");
+      
+      // CRITICAL: Hard exit failsafe for Windows
+      // Even after all cleanup, Windows may still have event loop handles that prevent exit
+      // (e.g., OpenTUI internal handlers, pending I/O, etc.)
+      // Set a hard exit timeout to ensure the process terminates
+      if (process.platform === "win32") {
+        const HARD_EXIT_TIMEOUT_MS = 3000;
+        log("main", `Windows: Setting hard exit failsafe (${HARD_EXIT_TIMEOUT_MS}ms)`);
+        setTimeout(() => {
+          log("main", "Hard exit failsafe triggered - forcing exit");
+          process.exit(0);
+        }, HARD_EXIT_TIMEOUT_MS).unref(); // unref() so it doesn't keep event loop alive by itself
+      }
     }
 
     // Fallback quit handler (useful if TUI key events fail)
@@ -759,7 +897,12 @@ async function main() {
     // Reduced timeout on Windows where OpenTUI keyboard is less reliable.
     // We use a simple stdin data handler (NOT readline.emitKeypressEvents) to avoid
     // permanently modifying stdin's event emission behavior.
-    const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindows ? 2000 : 5000;
+    // Keyboard fallback timing varies by platform/terminal
+    // - Windows: 2s (onMount doesn't fire reliably)
+    // - Terminal.app: 3s (limited keyboard protocol support)
+    // - Other Unix: 5s (Kitty protocol usually works)
+    const isTerminalApp = process.platform === "darwin" && process.env.TERM_PROGRAM === "Apple_Terminal";
+    const KEYBOARD_FALLBACK_TIMEOUT_MS = isWindows ? 2000 : isTerminalApp ? 3000 : 5000;
     
     /**
      * Permanently disable the fallback stdin handler.
@@ -873,15 +1016,16 @@ async function main() {
       await requestQuit("SIGTERM");
     });
 
-    // Windows-specific: Handle SIGHUP for console close
-    // Windows sends SIGHUP when console window is closed
-    if (process.platform === "win32") {
+    // Handle SIGHUP for terminal close (Windows and macOS)
+    // On macOS, SIGHUP is sent when Terminal.app window closes
+    // On Windows, SIGHUP is sent when console window is closed
+    if (process.platform === "win32" || process.platform === "darwin") {
       process.on("SIGHUP", async () => {
         if (quitRequested) {
           log("main", "SIGHUP received but quit already requested, ignoring");
           return;
         }
-        log("main", "SIGHUP received (Windows console close)");
+        log("main", "SIGHUP received (terminal close)");
         await requestQuit("SIGHUP");
       });
     }
@@ -902,18 +1046,21 @@ async function main() {
       onKeyboardEvent, // Task 4.3: Callback to detect if OpenTUI keyboard is working
       interruptHandler,
     });
+    appStateSetters = stateSetters;
 
     log("main", "TUI app started, state setters available");
 
     // Create batched updater for coalescing rapid state changes
-    // Use 100ms debounce for better batching during high event throughput
-    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 100);
+    // Use 50ms debounce (matching OpenTUI's responsive design) for snappy UI updates
+    // while still batching rapid events. Critical updates use flushNow() for immediate feedback.
+    const batchedUpdater = createBatchStateUpdater(stateSetters.setState, 50);
     const MAX_TERMINAL_BUFFER = config.ui.maxTerminalBuffer;
 
 
     stateSetters.setState((prev) => ({
       ...prev,
       adapterMode,
+      projectDir: process.cwd(),
     }));
 
     // Fetch initial diff stats and commits on resume
@@ -962,14 +1109,31 @@ async function main() {
     log("main", "Starting loop (paused)");
     runLoopPromise = runLoop(loopOptions, stateToUse, {
       onIterationStart: (iteration) => {
-        log("main", "onIterationStart", { iteration });
-        stateSetters.setState((prev) => ({
+        log("main", "onIterationStart", { iteration, isIdle: false, status: "running" });
+        batchedUpdater.queueUpdate((prev) => ({
           ...prev,
           status: "running",
           iteration,
+          isIdle: false, // Initial state for iteration: active (looping)
           // Clear any lingering spinners from previous (possibly failed) iterations
           events: prev.events.filter(e => e.type !== "spinner")
         }));
+        batchedUpdater.flushNow();
+        
+        // Force immediate render to ensure the "Looping..." status label appears
+        // This is critical for showing the iteration indicator at the bottom of EnhancedLog
+        stateSetters.requestRender();
+        
+        // Multi-stage render forcing for Windows where OpenTUI rendering can stall
+        // The scrollbox component may not update on first render request
+        if (process.platform === "win32") {
+          // First retry at 50ms to catch quick misses
+          setTimeout(() => stateSetters.requestRender(), 50);
+          // Second retry at 150ms for slower terminal updates
+          setTimeout(() => stateSetters.requestRender(), 150);
+          // Final retry at 300ms as safety net
+          setTimeout(() => stateSetters.requestRender(), 300);
+        }
       },
       onEvent: (event) => {
         // Debounce event updates to batch rapid events within window
@@ -989,7 +1153,10 @@ async function main() {
             others.push(spinner);
           }
           
-          return { events: trimEvents(others) };
+          // OPTIMIZATION: Trim events to prevent memory bloat (Inspired by OpenCode part cleaning)
+          const trimmed = trimEvents(others);
+          
+          return { events: trimmed };
         });
       },
       onRawOutput: (data) => {
@@ -1024,7 +1191,7 @@ async function main() {
         });
         // Update persisted state with the new iteration time
         stateToUse.iterationTimes.push(duration);
-        saveState(stateToUse);
+        syncAndSaveState();
         // Update the iteration times in the app for ETA calculation
         stateSetters.updateIterationTimes([...stateToUse.iterationTimes]);
         // Trigger render when iteration ends
@@ -1113,9 +1280,13 @@ async function main() {
           ...prev,
           isIdle,
         }));
-        // Trigger render when session becomes idle (completed processing)
-        if (isIdle) {
-          stateSetters.requestRender();
+        // Always trigger render on idle state change to ensure "Looping..." indicator updates
+        // Previously only rendered when isIdle=true, which caused the indicator to not appear
+        // when transitioning from idle to active (when iteration starts processing)
+        stateSetters.requestRender();
+        // Windows: Additional delayed render to ensure TUI updates properly
+        if (process.platform === "win32") {
+          setTimeout(() => stateSetters.requestRender(), 50);
         }
       },
       onSessionCreated: (session) => {

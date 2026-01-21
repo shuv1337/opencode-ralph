@@ -179,6 +179,101 @@ function PriorityDisplay(props: {
 }
 
 // =====================================================
+// EFFORT & RISK DISPLAY HELPERS
+// =====================================================
+
+const effortLabels: Record<string, string> = {
+  "XS": "Extra Small",
+  "S": "Small",
+  "M": "Medium",
+  "L": "Large",
+  "XL": "Extra Large",
+};
+
+const riskLabels: Record<string, string> = {
+  "L": "Low",
+  "M": "Medium",
+  "H": "High",
+};
+
+function getEffortColor(effort: string | undefined, theme: ReturnType<typeof useTheme>["theme"]): string {
+  const t = theme();
+  if (!effort) return t.textMuted;
+  switch (effort.toUpperCase()) {
+    case "XS": return t.success;     // Green - minimal effort
+    case "S": return t.success;      // Green - small effort
+    case "M": return t.primary;      // Blue - moderate effort
+    case "L": return t.warning;      // Orange - significant effort
+    case "XL": return t.error;       // Red - major effort
+    default: return t.textMuted;
+  }
+}
+
+function getRiskColor(risk: string | undefined, theme: ReturnType<typeof useTheme>["theme"]): string {
+  const t = theme();
+  if (!risk) return t.textMuted;
+  switch (risk.toUpperCase()) {
+    case "L": return t.success;      // Green - low risk
+    case "M": return t.warning;      // Orange - medium risk
+    case "H": return t.error;        // Red - high risk
+    default: return t.textMuted;
+  }
+}
+
+// =====================================================
+// METADATA BADGE COMPONENT
+// =====================================================
+
+function MetadataBadge(props: { 
+  label: string; 
+  value: string; 
+  color: string;
+  muted?: boolean;
+}) {
+  const { theme } = useTheme();
+  const t = () => theme();
+  
+  return (
+    <text>
+      <span style={{ fg: t().textMuted }}>{props.label}: </span>
+      <span style={{ fg: props.color, bold: !props.muted }}>{props.value}</span>
+    </text>
+  );
+}
+
+// =====================================================
+// VERIFICATION STEPS COMPONENT
+// =====================================================
+
+function VerificationSteps(props: { steps: string[] }) {
+  const { theme } = useTheme();
+  const t = () => theme();
+
+  return (
+    <box flexDirection="column" marginTop={1}>
+      <box marginBottom={1}>
+        <text fg={t().primary}>Verification Steps</text>
+      </box>
+      <For each={props.steps}>
+        {(step, index) => (
+          <box flexDirection="row" paddingLeft={1} marginBottom={0}>
+            <text fg={t().textMuted}>{index() + 1}. </text>
+            <text fg={t().text}>
+              <RenderMarkdownSegments 
+                text={step} 
+                normalColor={t().text} 
+                boldColor={t().accent} 
+                tagColor={t().secondary}
+              />
+            </text>
+          </box>
+        )}
+      </For>
+    </box>
+  );
+}
+
+// =====================================================
 // ENHANCED TASK DETAILS COMPONENT
 // =====================================================
 
@@ -187,14 +282,50 @@ function TaskDetails(props: { task: UiTask }) {
   const t = () => theme();
 
   const statusColor = () => getStatusColorFromTheme(props.task.status, theme);
+  const effortColor = () => getEffortColor(props.task.effort, theme);
+  const riskColor = () => getRiskColor(props.task.risk, theme);
 
-  // Render title and description with markdown bold parsing using RenderMarkdownSegments
+  // Format effort and risk for display
+  const effortDisplay = () => {
+    const effort = props.task.effort?.toUpperCase();
+    if (!effort) return null;
+    return effortLabels[effort] || effort;
+  };
+
+  const riskDisplay = () => {
+    const risk = props.task.risk?.toUpperCase();
+    if (!risk) return null;
+    return riskLabels[risk] || risk;
+  };
+
+  // Render title with status indicator
   const renderedTitle = () => (
-    <text><StatusIndicator status={props.task.status} type="task" wrap={false} /><span> </span><RenderMarkdownSegments text={props.task.title} normalColor={t().text} boldColor={t().accent} tagColor={t().secondary}/><span style={{ fg: t().textMuted }}> ({props.task.id})</span></text>
+    <text>
+      <StatusIndicator status={props.task.status} type="task" wrap={false} />
+      <span> </span>
+      <RenderMarkdownSegments 
+        text={props.task.title} 
+        normalColor={t().text} 
+        boldColor={t().accent} 
+        tagColor={t().secondary}
+      />
+    </text>
   );
 
+  // Show original ID if different from display ID
+  const showOriginalId = () => 
+    props.task.originalId && props.task.originalId !== props.task.id;
+
+  // Render description
   const renderedDescription = () => (
-    <text fg={t().text} width="100%"><RenderMarkdownSegments text={props.task.description ?? props.task.title} normalColor={t().text} boldColor={t().accent} tagColor={t().secondary}/></text>
+    <text fg={t().text} width="100%">
+      <RenderMarkdownSegments 
+        text={props.task.description ?? props.task.title} 
+        normalColor={t().text} 
+        boldColor={t().accent} 
+        tagColor={t().secondary}
+      />
+    </text>
   );
 
   // Check if description contains acceptance criteria
@@ -203,8 +334,113 @@ function TaskDetails(props: { task: UiTask }) {
     props.task.acceptanceCriteria !== undefined
   );
 
+  // Check if we have any metadata to show
+  const hasMetadata = () => 
+    props.task.category || props.task.effort || props.task.risk;
+
   return (
-    <box flexDirection="column" padding={1} flexGrow={1}><scrollbox flexGrow={1}><box marginBottom={1}>{renderedTitle()}</box><box marginBottom={1}><text><span style={{ fg: t().textMuted }}>Status: </span><span style={{ fg: statusColor() }}>{props.task.status}</span></text></box><Show when={props.task.priority !== undefined}><PriorityDisplay priority={props.task.priority} /></Show><Show when={props.task.line !== undefined}><box marginBottom={1}><text><span style={{ fg: t().textMuted }}>Plan line: </span><span style={{ fg: t().text }}>{props.task.line}</span></text></box></Show><box marginBottom={1}><text fg={t().primary}>Description</text></box><box padding={1} border borderColor={t().borderSubtle} backgroundColor={t().backgroundElement}>{renderedDescription()}</box><Show when={hasAcceptanceCriteria()}><AcceptanceCriteriaList task={props.task} /></Show></scrollbox><box flexDirection="row" gap={2} marginTop={1}><text fg={t().textMuted}>[C] Commands</text><text fg={t().textMuted}>[↑↓] Navigate</text><text fg={t().textMuted}>[?] Help</text></box></box>
+    <box flexDirection="column" padding={1} flexGrow={1}>
+      <scrollbox flexGrow={1}>
+        {/* Task Title */}
+        <box marginBottom={1}>
+          {renderedTitle()}
+        </box>
+
+        {/* ID Display */}
+        <box marginBottom={1}>
+          <text>
+            <span style={{ fg: t().textMuted }}>ID: </span>
+            <span style={{ fg: t().secondary }}>{props.task.id}</span>
+            <Show when={showOriginalId()}>
+              <span style={{ fg: t().textMuted }}> (PRD: {props.task.originalId})</span>
+            </Show>
+          </text>
+        </box>
+
+        {/* Quick Metadata Row */}
+        <Show when={hasMetadata()}>
+          <box flexDirection="row" gap={3} marginBottom={1} flexWrap="wrap">
+            <Show when={props.task.category}>
+              <MetadataBadge 
+                label="Category" 
+                value={props.task.category!} 
+                color={t().accent}
+              />
+            </Show>
+            <Show when={effortDisplay()}>
+              <MetadataBadge 
+                label="Effort" 
+                value={`${props.task.effort} (${effortDisplay()})`} 
+                color={effortColor()}
+              />
+            </Show>
+            <Show when={riskDisplay()}>
+              <MetadataBadge 
+                label="Risk" 
+                value={`${props.task.risk} (${riskDisplay()})`} 
+                color={riskColor()}
+              />
+            </Show>
+          </box>
+        </Show>
+
+        {/* Status and Priority Row */}
+        <box flexDirection="row" gap={3} marginBottom={1}>
+          <text>
+            <span style={{ fg: t().textMuted }}>Status: </span>
+            <span style={{ fg: statusColor(), bold: true }}>{props.task.status}</span>
+          </text>
+          <Show when={props.task.priority !== undefined}>
+            <text>
+              <span style={{ fg: t().textMuted }}>Priority: </span>
+              <span style={{ fg: getPriorityColor(props.task.priority!, theme) }}>
+                {priorityLabels[props.task.priority!] || `P${props.task.priority}`}
+              </span>
+            </text>
+          </Show>
+        </box>
+
+        {/* Plan Line */}
+        <Show when={props.task.line !== undefined}>
+          <box marginBottom={1}>
+            <text>
+              <span style={{ fg: t().textMuted }}>Plan Line: </span>
+              <span style={{ fg: t().text }}>{props.task.line}</span>
+            </text>
+          </box>
+        </Show>
+
+        {/* Description Section */}
+        <box marginBottom={1} marginTop={1}>
+          <text><b style={{ fg: t().primary }}>Description</b></text>
+        </box>
+        <box 
+          padding={1} 
+          border 
+          borderColor={t().borderSubtle} 
+          backgroundColor={t().backgroundElement}
+        >
+          {renderedDescription()}
+        </box>
+
+        {/* Verification Steps */}
+        <Show when={props.task.steps && props.task.steps.length > 0}>
+          <VerificationSteps steps={props.task.steps!} />
+        </Show>
+
+        {/* Acceptance Criteria */}
+        <Show when={hasAcceptanceCriteria()}>
+          <AcceptanceCriteriaList task={props.task} />
+        </Show>
+      </scrollbox>
+
+      {/* Footer with keyboard hints */}
+      <box flexDirection="row" gap={2} marginTop={1}>
+        <text fg={t().textMuted}>[C] Commands</text>
+        <text fg={t().textMuted}>[↑↓] Navigate</text>
+        <text fg={t().textMuted}>[?] Help</text>
+      </box>
+    </box>
   );
 }
 
