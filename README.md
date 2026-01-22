@@ -134,6 +134,7 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--reset, -r` | `false` | Remove generated files and state, then exit |
 | `--headless, -H` | `false` | CI-friendly output |
 | `--format` | `text` | Headless output format (text, jsonl, json) |
+| `--banner` | `true` | Show ASCII banner on startup (headless mode) |
 | `--timestamps` | `false` | Include timestamps in headless output |
 | `--max-iterations` | (none) | Cap iterations (headless) |
 | `--max-time` | (none) | Cap runtime seconds (headless) |
@@ -146,6 +147,7 @@ ralph init --from plan.md          # convert unstructured plan to PRD JSON
 | `--force, -f` | `false` | Force acquire session lock |
 | `--verbose, -V` | `false` | Enable verbose debug logging to file |
 | `--fallback-agent` | (none) | Fallback agent mapping (format: `primary:fallback`) |
+| `--auto-start` | (auto) | Start immediately (default: true in CI, false in interactive) |
 
 ### Init Subcommand
 
@@ -201,6 +203,80 @@ To get the most out of the conversion, use this format in your markdown plans:
 - **Category Tags**: Placing a bracketed tag like `[ui]` or `[feat]` at the start of a task automatically sets the `category` field in the generated PRD.
 - **Deduplication**: Ralph automatically removes duplicate tasks during the conversion process.
 - **Universal Support**: Works across Windows, macOS, and Linux with any standard terminal.
+
+---
+
+## Headless Mode
+
+Headless mode (`--headless` or `-H`) provides CI/CD-friendly output without the interactive TUI. Perfect for automated pipelines, scheduled runs, and scripted workflows.
+
+### Startup Behavior
+
+In interactive terminals, headless mode waits for confirmation before starting:
+- Press **[P]** to start the agent loop
+- Press **[Q]** to quit without running
+
+In non-interactive environments (CI pipelines, piped output), the agent starts immediately.
+
+Use `--auto-start` to control this behavior explicitly:
+- `--auto-start true` — Start immediately (skip the prompt)
+- `--auto-start false` — Always wait for confirmation
+
+### Output Formats
+
+| Format | Description |
+|--------|-------------|
+| `text` | Human-readable output with prefixed lines (`[READ]`, `[WRITE]`, `[BASH]`, etc.) |
+| `jsonl` | Newline-delimited JSON for real-time streaming and log aggregation |
+| `json` | Single JSON object with complete run summary (output at end) |
+
+### ASCII Banner
+
+By default, headless mode displays an ASCII banner on startup showing the OpenRalph logo and version. Use `--banner false` to suppress it for cleaner logs.
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success - all tasks completed |
+| `1` | Error - agent encountered an error |
+| `2` | Interrupted - user cancelled (Ctrl+C) |
+| `3` | Limit reached - hit `--max-iterations` or `--max-time` |
+
+### Examples
+
+```bash
+# Default headless with ASCII banner
+ralph --headless
+
+# JSON output for parsing (complete summary at end)
+ralph --headless --format json
+
+# JSONL streaming for real-time monitoring
+ralph --headless --format jsonl
+
+# Suppress banner for cleaner CI logs
+ralph --headless --banner false
+
+# With iteration and time limits
+ralph --headless --max-iterations 10 --max-time 3600
+
+# Full CI/CD pipeline example
+ralph --headless --format jsonl --banner false --max-iterations 50 2>&1 | tee ralph.log
+```
+
+### Text Output Prefixes
+
+In text format, each line is prefixed to indicate the event type:
+
+| Prefix | Description |
+|--------|-------------|
+| `[READ]` | File read operation |
+| `[WRITE]` | File write operation |
+| `[BASH]` | Shell command execution |
+| `[TASK]` | Task selection or completion |
+| `[ERROR]` | Error occurred |
+| `[INFO]` | General information |
 
 ---
 
