@@ -424,6 +424,16 @@ async function main() {
       description: "Maximum time in seconds before aborting (headless)",
       default: config.maxTime,
     })
+    .option("banner", {
+      type: "boolean",
+      description: "Show ASCII banner on startup (headless mode)",
+      default: true,
+    })
+    .option("auto-start", {
+      type: "boolean",
+      description: "Start immediately without waiting for keypress (default: true in CI, false in interactive)",
+      default: undefined,  // undefined means auto-detect based on CI/TTY
+    })
     .option("server", {
       alias: "s",
       type: "string",
@@ -679,6 +689,8 @@ async function main() {
         timestamps: argv.timestamps,
         maxIterations: argv.maxIterations,
         maxTime: argv.maxTime,
+        showBanner: argv.banner as boolean,
+        autoStart: argv["auto-start"] as boolean | undefined,
       });
       return;
     }

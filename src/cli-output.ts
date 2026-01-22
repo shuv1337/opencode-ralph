@@ -3,65 +3,114 @@ import type { ToolEvent } from "./state";
 import { createJsonFormatter } from "./formats/json";
 import { createJsonlFormatter } from "./formats/jsonl";
 import { createTextFormatter } from "./formats/text";
+import {
+  createTextRenderer,
+  type TextRenderer,
+  type TextRenderMode,
+  type TextRendererOptions,
+} from "./lib/text-renderer";
+import { renderBanner, shouldShowBanner, type BannerOptions } from "./lib/ascii-banner";
+import { getCapabilities } from "./lib/terminal-capabilities";
 
-export type HeadlessEvent =
-  | { type: "start"; timestamp?: number }
-  | { type: "iteration_start"; iteration: number; timestamp?: number }
-  | { type: "iteration_end"; iteration: number; durationMs: number; commits: number; timestamp?: number }
-  | { type: "tool"; iteration: number; name: string; title: string; detail?: string; timestamp?: number }
-  | { type: "reasoning"; iteration: number; text: string; timestamp?: number }
-  | { type: "output"; data: string; timestamp?: number }
-  | { type: "progress"; done: number; total: number; timestamp?: number }
-  | { type: "stats"; commits: number; linesAdded: number; linesRemoved: number; timestamp?: number }
-  | { type: "pause"; timestamp?: number }
-  | { type: "resume"; timestamp?: number }
-  | { type: "idle"; isIdle: boolean; timestamp?: number }
-  | { type: "error"; message: string; timestamp?: number }
-  | { type: "complete"; timestamp?: number };
+// Re-export canonical types from headless/types.ts
+export type {
+  HeadlessEvent,
+  HeadlessEventType,
+  HeadlessSummary,
+  HeadlessFormatter,
+  HeadlessExitCode,
+  HeadlessStats,
+  HeadlessCallbacks,
+  HeadlessConfig,
+  HeadlessLimits,
+  HeadlessOutput as HeadlessOutputInterface,
+  HeadlessOutputOptions,
+  HeadlessState,
+  FormatterType,
+  FormatterOptions,
+  TokenUsage,
+  SessionInfo,
+  SandboxConfig,
+  RateLimitState,
+  ActiveAgentState,
+  BannerConfig,
+  ErrorHandlingConfig,
+  CleanupConfig,
+} from "./headless/types";
 
-export type HeadlessSummary = {
-  exitCode: number;
-  durationMs: number;
-  tasksComplete: number;
-  totalTasks: number;
-  commits: number;
-  linesAdded: number;
-  linesRemoved: number;
-};
+// Re-export exit code constants
+export { HeadlessExitCodes } from "./headless/types";
 
-export type HeadlessFormatter = {
-  emit: (event: HeadlessEvent) => void;
-  finalize: (summary: HeadlessSummary) => void;
-};
+import type {
+  HeadlessEvent,
+  HeadlessSummary,
+  HeadlessFormatter,
+  HeadlessExitCode,
+  HeadlessStats,
+  BannerConfig,
+} from "./headless/types";
 
+// Re-export text renderer types for consumers
+export type { TextRenderer, TextRenderMode, TextRendererOptions };
+export { createTextRenderer };
+
+/**
+ * Headless output coordinator.
+ * @remarks Uses the canonical types from headless/types.ts
+ */
 export type HeadlessOutput = {
   callbacks: LoopCallbacks;
   emit: (event: HeadlessEvent) => void;
-  emitStart: () => void;
-  finalize: (exitCode: number) => void;
+  showBanner: () => void;
+  finalize: (exitCode: HeadlessExitCode) => void;
+  getStats: () => Readonly<HeadlessStats>;
+  getTextRenderer: () => TextRenderer;
 };
 
-export function createHeadlessOutput(options: {
+/**
+ * Extended options for headless output creation.
+ */
+export interface HeadlessOutputCreateOptions {
   format: string;
   timestamps: boolean;
   startTime?: number;
   write?: (text: string) => void;
-}): HeadlessOutput {
+  /** Banner configuration for ASCII art display */
+  banner?: Partial<BannerConfig>;
+  /** Text renderer options for formatting */
+  textRendererOptions?: TextRendererOptions;
+}
+
+export function createHeadlessOutput(options: HeadlessOutputCreateOptions): HeadlessOutput {
   const format = options.format.toLowerCase();
+  
+  // Create text renderer for formatting
+  // In headless mode (text format), force minimum 'ascii' mode instead of 'minimal'
+  // This ensures [READ], [WRITE], etc. prefixes are shown properly
+  const textRenderer = createTextRenderer({
+    ...options.textRendererOptions,
+    forceMinimumAscii: format === "text",
+  });
+  
   const formatter: HeadlessFormatter =
     format === "json"
       ? createJsonFormatter({ write: options.write })
       : format === "jsonl"
         ? createJsonlFormatter({ timestamps: options.timestamps, write: options.write })
-        : createTextFormatter({ timestamps: options.timestamps, write: options.write });
+        : createTextFormatter({ 
+            timestamps: options.timestamps, 
+            write: options.write,
+            textRenderer,
+          });
 
-  const stats = {
+  const stats: HeadlessStats = {
     startTime: options.startTime ?? Date.now(),
     tasksComplete: 0,
     totalTasks: 0,
     commits: 0,
     linesAdded: 0,
     linesRemoved: 0,
+    iterations: 0,
   };
 
   const withTimestamp = <T extends HeadlessEvent>(event: T): T => {
@@ -84,6 +133,7 @@ export function createHeadlessOutput(options: {
 
   const callbacks: LoopCallbacks = {
     onIterationStart: (iteration) => {
+      stats.iterations = iteration;
       emit({ type: "iteration_start", iteration });
     },
     onEvent: (event: ToolEvent) => {
@@ -144,16 +194,29 @@ export function createHeadlessOutput(options: {
       emit({ type: "idle", isIdle });
     },
     onModel: (model) => {
-      // Could emit model change event if needed
+      emit({ type: "model", model });
     },
     onSandbox: (sandbox) => {
-      // Could emit sandbox event if needed
+      emit({ 
+        type: "sandbox", 
+        enabled: sandbox.enabled ?? false,
+        mode: sandbox.mode,
+        network: sandbox.network,
+      });
     },
     onRateLimit: (state) => {
-      emit({ type: "error", message: `Rate limit detected. Falling back to ${state.fallbackAgent}` });
+      emit({ 
+        type: "rate_limit", 
+        primaryAgent: state.primaryAgent,
+        fallbackAgent: state.fallbackAgent ?? "unknown",
+      });
     },
     onActiveAgent: (state) => {
-      // Could emit active agent event if needed
+      emit({ 
+        type: "active_agent", 
+        plugin: state.plugin,
+        reason: state.reason ?? "primary",
+      });
     },
   };
 
@@ -161,8 +224,34 @@ export function createHeadlessOutput(options: {
   return {
     callbacks,
     emit,
-    emitStart: () => {
-      emit({ type: "start" });
+    showBanner: () => {
+      // Emit banner if enabled (only for text format by default)
+      const isTextFormat = format === "text";
+      const bannerEnabled = options.banner?.enabled ?? isTextFormat;
+
+      if (!bannerEnabled || !shouldShowBanner()) {
+        return;
+      }
+
+      // In headless mode, we want to show the banner even if terminal is non-interactive.
+      // The banner.enabled flag being explicitly set means the caller wants the banner.
+      // Only skip for CI environments unless explicitly enabled.
+      const caps = getCapabilities();
+      if (caps.isCI && options.banner?.enabled !== true) {
+        return;
+      }
+
+      const bannerText = renderBanner({
+        text: options.banner?.text ?? "OpenRalph",
+        palette: (options.banner?.palette as import("./lib/ascii-banner").PaletteName) ?? "openralph",
+        style: (options.banner?.style as import("./lib/ascii-banner").BannerStyle) || (options.banner?.filled ? "filled" : undefined),
+        includeVersion: options.banner?.includeVersion,
+        version: options.banner?.version,
+      });
+      if (bannerText) {
+        const write = options.write ?? ((text: string) => process.stdout.write(text));
+        write(bannerText + "\n\n");
+      }
     },
     finalize: (exitCode) => {
       const durationMs = Date.now() - stats.startTime;
@@ -176,5 +265,7 @@ export function createHeadlessOutput(options: {
         linesRemoved: stats.linesRemoved,
       });
     },
+    getStats: () => stats as Readonly<HeadlessStats>,
+    getTextRenderer: () => textRenderer,
   };
 }
