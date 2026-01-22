@@ -8,8 +8,365 @@
  * - Subprocess Registry: Explicitly track all spawned PIDs for guaranteed cleanup
  * - Process Tree Termination: Kill entire subtrees using platform-specific methods
  * - Orphan Prevention: Kill processes BEFORE parent relationships are broken
+ * - Graceful Shutdown: Try SIGTERM before SIGKILL with configurable timeout
+ * - Signal Handling: Unified cross-platform signal handler registration
  */
 import { log } from "./log";
+
+/**
+ * Options for process cleanup operations.
+ * Provides fine-grained control over termination behavior.
+ */
+export interface ProcessCleanupOptions {
+  /** Milliseconds to wait for graceful shutdown before force kill (default: 3000) */
+  gracefulTimeout?: number;
+  /** Force kill if graceful shutdown fails (default: true) */
+  forceKill?: boolean;
+  /** Kill entire process tree including children (default: true) */
+  killTree?: boolean;
+}
+
+/**
+ * Default cleanup options for balanced graceful/force behavior.
+ */
+const DEFAULT_CLEANUP_OPTIONS: Required<ProcessCleanupOptions> = {
+  gracefulTimeout: 3000,
+  forceKill: true,
+  killTree: true,
+};
+
+/**
+ * Registered cleanup handlers for signal-based termination.
+ */
+const signalHandlers = new Map<NodeJS.Signals, Set<() => Promise<void>>>();
+
+/**
+ * Session cleanup functions registered by adapters.
+ * Each adapter can register its cleanup function to be called during shutdown.
+ */
+const sessionCleanupFunctions = new Set<() => Promise<void>>();
+
+/**
+ * Register a cleanup handler for a specific signal.
+ * Handlers are called in order when the signal is received.
+ * 
+ * @param signal The signal to handle (e.g., 'SIGINT', 'SIGTERM', 'SIGHUP')
+ * @param handler Async cleanup function to call when signal is received
+ * @returns Unregister function to remove the handler
+ */
+export function registerCleanupHandler(
+  signal: NodeJS.Signals,
+  handler: () => Promise<void>
+): () => void {
+  if (!signalHandlers.has(signal)) {
+    signalHandlers.set(signal, new Set());
+    
+    // Register the process signal handler only once per signal
+    process.on(signal, async () => {
+      log("cleanup", `Signal ${signal} received, running cleanup handlers`);
+      const handlers = signalHandlers.get(signal);
+      if (handlers) {
+        for (const h of handlers) {
+          try {
+            await h();
+          } catch (error) {
+            log("cleanup", `Error in ${signal} handler`, { 
+              error: error instanceof Error ? error.message : String(error) 
+            });
+          }
+        }
+      }
+    });
+    
+    log("cleanup", `Registered signal handler for ${signal}`);
+  }
+  
+  signalHandlers.get(signal)!.add(handler);
+  log("cleanup", `Added cleanup handler for ${signal}`);
+  
+  // Return unregister function
+  return () => {
+    signalHandlers.get(signal)?.delete(handler);
+    log("cleanup", `Removed cleanup handler for ${signal}`);
+  };
+}
+
+/**
+ * Register a session cleanup function.
+ * Called by adapters to ensure their sessions are properly cleaned up.
+ * 
+ * @param cleanupFn Async function that cleans up the session
+ * @returns Unregister function to remove the cleanup function
+ */
+export function registerSessionCleanup(cleanupFn: () => Promise<void>): () => void {
+  sessionCleanupFunctions.add(cleanupFn);
+  log("cleanup", "Registered session cleanup function");
+  
+  return () => {
+    sessionCleanupFunctions.delete(cleanupFn);
+    log("cleanup", "Unregistered session cleanup function");
+  };
+}
+
+/**
+ * Clean up all registered sessions.
+ * Calls all registered session cleanup functions and cleans up spawned processes.
+ * 
+ * This is the main cleanup entry point for headless mode and graceful shutdown.
+ */
+export async function cleanupAllSessions(): Promise<CleanupResult> {
+  const result: CleanupResult = {
+    success: true,
+    terminatedPids: [],
+    errors: [],
+  };
+  
+  log("cleanup", "Cleaning up all sessions", { 
+    sessionCount: sessionCleanupFunctions.size,
+    registeredProcesses: getRegisteredProcesses().length
+  });
+  
+  // Step 1: Call all registered session cleanup functions
+  for (const cleanupFn of sessionCleanupFunctions) {
+    try {
+      await cleanupFn();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      result.errors.push(`Session cleanup error: ${msg}`);
+      log("cleanup", "Session cleanup function failed", { error: msg });
+    }
+  }
+  
+  // Clear the session cleanup registry
+  sessionCleanupFunctions.clear();
+  
+  // Step 2: Kill all registered spawned processes
+  const registeredResult = await killRegisteredProcesses();
+  result.terminatedPids.push(...registeredResult.terminatedPids);
+  result.errors.push(...registeredResult.errors);
+  
+  // Step 3: Force terminate any remaining descendants
+  const descendantResult = await forceTerminateDescendants();
+  result.terminatedPids.push(...descendantResult.terminatedPids);
+  result.errors.push(...descendantResult.errors);
+  
+  if (result.errors.length > 0) {
+    result.success = false;
+  }
+  
+  log("cleanup", "All sessions cleanup complete", {
+    terminatedCount: result.terminatedPids.length,
+    errorCount: result.errors.length
+  });
+  
+  return result;
+}
+
+/**
+ * Clean up a single process with graceful shutdown support.
+ * Tries SIGTERM first, waits for graceful timeout, then SIGKILL if needed.
+ * 
+ * @param pid Process ID to terminate
+ * @param options Cleanup options (gracefulTimeout, forceKill)
+ */
+export async function cleanupProcess(
+  pid: number,
+  options?: ProcessCleanupOptions
+): Promise<CleanupResult> {
+  const opts = { ...DEFAULT_CLEANUP_OPTIONS, ...options };
+  const result: CleanupResult = {
+    success: true,
+    terminatedPids: [],
+    errors: [],
+  };
+  
+  log("cleanup", "Cleaning up process", { pid, options: opts });
+  
+  // Check if process exists
+  if (!isProcessRunning(pid)) {
+    log("cleanup", "Process already terminated", { pid });
+    return result;
+  }
+  
+  const platform = process.platform;
+  
+  try {
+    if (platform === "win32") {
+      // Windows: Use taskkill without /F first for graceful, then with /F
+      await cleanupProcessWindows(pid, opts, result);
+    } else {
+      // Unix: Use SIGTERM first, then SIGKILL after timeout
+      await cleanupProcessUnix(pid, opts, result);
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    result.errors.push(`Failed to cleanup PID ${pid}: ${msg}`);
+    result.success = false;
+  }
+  
+  return result;
+}
+
+/**
+ * Windows-specific graceful process cleanup.
+ */
+async function cleanupProcessWindows(
+  pid: number,
+  opts: Required<ProcessCleanupOptions>,
+  result: CleanupResult
+): Promise<void> {
+  // Step 1: Try graceful termination (taskkill without /F)
+  log("cleanup", "Attempting graceful termination (Windows)", { pid });
+  
+  const gracefulArgs = opts.killTree 
+    ? ["/T", "/PID", String(pid)]
+    : ["/PID", String(pid)];
+  
+  const gracefulProc = Bun.spawn(["taskkill", ...gracefulArgs], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  await gracefulProc.exited;
+  
+  if (gracefulProc.exitCode === 0) {
+    result.terminatedPids.push(pid);
+    log("cleanup", "Graceful termination successful", { pid });
+    return;
+  }
+  
+  // Wait for graceful timeout
+  log("cleanup", "Waiting for graceful shutdown", { pid, timeout: opts.gracefulTimeout });
+  await Bun.sleep(opts.gracefulTimeout);
+  
+  // Check if process exited during grace period
+  if (!isProcessRunning(pid)) {
+    result.terminatedPids.push(pid);
+    log("cleanup", "Process exited during grace period", { pid });
+    return;
+  }
+  
+  // Step 2: Force kill if enabled
+  if (opts.forceKill) {
+    log("cleanup", "Attempting force termination (Windows)", { pid });
+    
+    const forceArgs = opts.killTree
+      ? ["/F", "/T", "/PID", String(pid)]
+      : ["/F", "/PID", String(pid)];
+    
+    const forceProc = Bun.spawn(["taskkill", ...forceArgs], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await forceProc.exited;
+    
+    if (forceProc.exitCode === 0) {
+      result.terminatedPids.push(pid);
+      log("cleanup", "Force termination successful", { pid });
+    } else {
+      const stderr = await new Response(forceProc.stderr).text();
+      if (!stderr.includes("not found")) {
+        result.errors.push(`Force kill failed for PID ${pid}: ${stderr}`);
+      }
+    }
+  } else {
+    log("cleanup", "Force kill disabled, process may still be running", { pid });
+  }
+}
+
+/**
+ * Unix-specific graceful process cleanup.
+ */
+async function cleanupProcessUnix(
+  pid: number,
+  opts: Required<ProcessCleanupOptions>,
+  result: CleanupResult
+): Promise<void> {
+  // Step 1: Try graceful termination with SIGTERM
+  log("cleanup", "Attempting graceful termination (Unix)", { pid });
+  
+  try {
+    if (opts.killTree) {
+      // Try to send SIGTERM to process group
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {
+        // Process group kill failed, try direct
+        process.kill(pid, "SIGTERM");
+      }
+    } else {
+      process.kill(pid, "SIGTERM");
+    }
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    if (error.includes("ESRCH")) {
+      // Process already gone
+      log("cleanup", "Process already terminated during SIGTERM", { pid });
+      return;
+    }
+    throw e;
+  }
+  
+  // Wait for graceful timeout
+  log("cleanup", "Waiting for graceful shutdown", { pid, timeout: opts.gracefulTimeout });
+  
+  // Poll for process exit during grace period
+  const startTime = Date.now();
+  while (Date.now() - startTime < opts.gracefulTimeout) {
+    if (!isProcessRunning(pid)) {
+      result.terminatedPids.push(pid);
+      log("cleanup", "Process exited during grace period", { pid });
+      return;
+    }
+    await Bun.sleep(100); // Check every 100ms
+  }
+  
+  // Step 2: Force kill if enabled
+  if (opts.forceKill) {
+    log("cleanup", "Attempting force termination (Unix)", { pid });
+    
+    try {
+      if (opts.killTree) {
+        // Try to send SIGKILL to process group
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          // Process group kill failed, try direct
+          process.kill(pid, "SIGKILL");
+        }
+      } else {
+        process.kill(pid, "SIGKILL");
+      }
+      result.terminatedPids.push(pid);
+      log("cleanup", "Force termination successful", { pid });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      if (!error.includes("ESRCH")) {
+        result.errors.push(`Force kill failed for PID ${pid}: ${error}`);
+      }
+    }
+  } else {
+    log("cleanup", "Force kill disabled, process may still be running", { pid });
+  }
+}
+
+/**
+ * Clean up an entire process tree.
+ * Similar to cleanupProcess but explicitly handles all descendants.
+ * 
+ * @param pid Root process ID of the tree to terminate
+ * @param options Cleanup options
+ */
+export async function cleanupProcessTree(
+  pid: number,
+  options?: ProcessCleanupOptions
+): Promise<CleanupResult> {
+  const opts = { ...DEFAULT_CLEANUP_OPTIONS, ...options, killTree: true };
+  
+  log("cleanup", "Cleaning up process tree", { pid, options: opts });
+  
+  // Use cleanupProcess with killTree forced to true
+  return cleanupProcess(pid, opts);
+}
 
 /**
  * Global subprocess registry for tracking spawned processes.
