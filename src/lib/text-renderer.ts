@@ -15,6 +15,18 @@
 
 import { getCapabilities } from "./terminal-capabilities";
 import { ICON_SETS, type IconStyle } from "./icon-fallback";
+import {
+  getSymbol,
+  getSymbolStyle,
+  TOOL_SYMBOLS,
+  TOOL_TYPE_SYMBOLS,
+  STATUS_SYMBOLS,
+  ARROW_SYMBOLS,
+  BOX_SYMBOLS,
+  BLOCK_SYMBOLS,
+  MISC_SYMBOLS,
+  type SymbolStyle,
+} from "./cli-symbols";
 
 // ============================================================================
 // Types
@@ -224,32 +236,34 @@ export const TOOL_TEXT_MAP: Record<string, string> = {
 };
 
 /**
- * Tool icon to Unicode emoji mapping.
+ * Tool icon to Unicode symbol mapping.
+ * Uses proper terminal-native symbols, NOT emojis.
+ * These are monospace-compatible UTF-8 characters.
  */
 export const TOOL_UNICODE_MAP: Record<string, string> = {
-  read: "[📖]",
-  write: "[📝]",
-  edit: "[✏️]",
-  bash: "[💻]",
-  glob: "[📁]",
-  grep: "[🔍]",
-  task: "[📋]",
-  todowrite: "[☑️]",
-  todoread: "[📃]",
-  thought: "[💭]",
-  lsp: "[⚙️]",
-  websearch: "[🌐]",
-  webfetch: "[🌐]",
-  codesearch: "[🔎]",
-  mcp: "[🔌]",
-  tavily: "[🌐]",
-  context7: "[📚]",
-  exa: "[🔍]",
-  gh: "[🐙]",
-  github: "[🐙]",
-  brave: "[🦁]",
-  custom: "[📦]",
-  skill: "[🎯]",
+  read: "[◀]",
+  write: "[▶]",
+  edit: "[◇]",
+  bash: "[$]",
+  glob: "[*]",
+  grep: "[/]",
+  task: "[▣]",
+  todowrite: "[☑]",
+  todoread: "[▣]",
+  thought: "[◈]",
+  lsp: "[◎]",
+  websearch: "[◉]",
+  webfetch: "[↓]",
+  codesearch: "[/]",
+  mcp: "[+]",
+  tavily: "[◉]",
+  context7: "[+]",
+  exa: "[/]",
+  gh: "[#]",
+  github: "[#]",
+  brave: "[◉]",
+  custom: "[◆]",
+  skill: "[★]",
 };
 
 // ============================================================================
@@ -275,6 +289,7 @@ export const STATUS_TEXT_MAP: Record<RalphStatus, string> = {
 
 /**
  * Ralph status to Unicode symbol mapping.
+ * Uses proper terminal-native symbols, NOT emojis.
  */
 export const STATUS_UNICODE_MAP: Record<RalphStatus, string> = {
   starting: "[○]",
@@ -282,12 +297,12 @@ export const STATUS_UNICODE_MAP: Record<RalphStatus, string> = {
   running: "[▶]",
   selecting: "[◐]",
   executing: "[▶]",
-  pausing: "[◎]",
-  paused: "[⏸]",
+  pausing: "[◆]",
+  paused: "[◆]",
   stopped: "[■]",
-  complete: "[✔]",
+  complete: "[✓]",
   idle: "[○]",
-  error: "[✖]",
+  error: "[✗]",
 };
 
 /**
@@ -373,19 +388,20 @@ export const EVENT_TEXT_MAP: Record<ActivityEventType, string> = {
 
 /**
  * Activity event to Unicode symbol mapping.
+ * Uses proper terminal-native symbols, NOT emojis.
  */
 export const EVENT_UNICODE_MAP: Record<ActivityEventType, string> = {
   session_start: "[▶]",
-  session_idle: "[⏸]",
-  task: "[☑️]",
-  file_edit: "[✏️]",
-  file_read: "[📖]",
+  session_idle: "[◆]",
+  task: "[☐]",
+  file_edit: "[◇]",
+  file_read: "[◀]",
   error: "[✗]",
-  user_message: "[👤]",
-  assistant_message: "[🤖]",
-  reasoning: "[💭]",
-  tool_use: "[⚙️]",
-  info: "[ℹ️]",
+  user_message: "[→]",
+  assistant_message: "[←]",
+  reasoning: "[◈]",
+  tool_use: "[◆]",
+  info: "[i]",
 };
 
 /**
@@ -421,12 +437,13 @@ export const OUTCOME_TEXT_MAP: Record<OutcomeType, string> = {
 
 /**
  * Outcome to Unicode symbol mapping.
+ * Uses proper terminal-native symbols, NOT emojis.
  */
 export const OUTCOME_UNICODE_MAP: Record<OutcomeType, string> = {
-  success: "[✔]",
-  error: "[✖]",
-  running: "[◉]",
-  warning: "[⚠️]",
+  success: "[✓]",
+  error: "[✗]",
+  running: "[●]",
+  warning: "[!]",
 };
 
 /**

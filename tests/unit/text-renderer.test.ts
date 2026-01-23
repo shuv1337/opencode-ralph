@@ -465,17 +465,18 @@ describe("Text Renderer - Unicode Mode", () => {
   });
 
   describe("renderToolIcon", () => {
-    it("should return Unicode emoji for known tools", () => {
-      expect(renderer.renderToolIcon("read")).toBe("[📖]");
-      expect(renderer.renderToolIcon("bash")).toBe("[💻]");
-      expect(renderer.renderToolIcon("thought")).toBe("[💭]");
+    it("should return Unicode symbols for known tools", () => {
+      // Now uses proper terminal-native symbols, NOT emojis
+      expect(renderer.renderToolIcon("read")).toBe("[◀]");
+      expect(renderer.renderToolIcon("bash")).toBe("[$]");
+      expect(renderer.renderToolIcon("thought")).toBe("[◈]");
     });
   });
 
   describe("renderStatus", () => {
     it("should return Unicode status symbols", () => {
-      expect(renderer.renderStatus("complete")).toBe("[✔]");
-      expect(renderer.renderStatus("error")).toBe("[✖]");
+      expect(renderer.renderStatus("complete")).toBe("[✓]");
+      expect(renderer.renderStatus("error")).toBe("[✗]");
       expect(renderer.renderStatus("running")).toBe("[▶]");
     });
   });
