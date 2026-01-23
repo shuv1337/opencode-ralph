@@ -19,6 +19,10 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -46,6 +50,17 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Detect release type
+        id: release-type
+        run: |
+          if [ -z "${{ inputs.bump }}" ] && [ -z "${{ inputs.version }}" ]; then
+            echo "is_dev=true" >> $GITHUB_OUTPUT
+            echo "Release type: Development (rolling)"
+          else
+            echo "is_dev=false" >> $GITHUB_OUTPUT
+            echo "Release type: Production"
+          fi
+
       - name: Publish to npm
         id: publish
         run: bun run scripts/publish.ts
@@ -54,22 +69,134 @@ jobs:
           RALPH_VERSION: ${{ inputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Generate changelog
+        if: ${{ steps.publish.outputs.version != '' }}
+        id: changelog
+        run: |
+          version="${{ steps.publish.outputs.version }}"
+          is_dev="${{ steps.release-type.outputs.is_dev }}"
+          
+          # Find the latest production tag (exclude dev tags)
+          prev_tag=$(git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "")
+          
+          if [ -z "$prev_tag" ]; then
+            # No previous release, include last 50 commits
+            commits=$(git log --oneline --format="- %s (%h) by @%an" -n 50)
+            header="Initial release commits:"
+          else
+            commits=$(git log "${prev_tag}..HEAD" --oneline --format="- %s (%h) by @%an")
+            header="Changes since ${prev_tag}:"
+          fi
+          
+          # Create changelog file
+          if [ "$is_dev" = "true" ]; then
+            cat > changelog.md << EOF
+          ## Development Build
+          
+          > **Warning**: This is an automated development build. Not recommended for production use.
+          
+          **Build Time**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Commit**: ${GITHUB_SHA:0:7}
+          
+          ### ${header}
+          
+          ${commits}
+          
+          ### Installation
+          
+          \`\`\`bash
+          bun install -g openralph@dev
+          \`\`\`
+          EOF
+          else
+            cat > changelog.md << EOF
+          ## Release v${version}
+          
+          ### ${header}
+          
+          ${commits}
+          
+          ### Installation
+          
+          \`\`\`bash
+          bun install -g openralph
+          \`\`\`
+          
+          ### Checksums
+          
+          See \`SHA256SUMS.txt\` for file verification.
+          EOF
+          fi
+          
+          echo "Generated changelog:"
+          cat changelog.md
+          
+          # Store changelog content for summary
+          echo "prev_tag=${prev_tag:-none}" >> $GITHUB_OUTPUT
+
       - name: Package release binaries
         if: ${{ steps.publish.outputs.version != '' }}
         run: |
           version="${{ steps.publish.outputs.version }}"
           mkdir -p release-assets
+          
           for dir in dist/openralph-*; do
             if [ ! -d "$dir/bin" ]; then
               continue
             fi
+            
             pkg=$(basename "$dir")
+            platform=$(echo "$pkg" | sed 's/openralph-//' | cut -d- -f1)
+            arch=$(echo "$pkg" | sed 's/openralph-//' | cut -d- -f2)
+            
             if [ -f "$dir/bin/ralph.exe" ]; then
+              # Windows: Create tar.gz, zip, and standalone exe
+              echo "Packaging Windows ${arch}..."
+              
+              # tar.gz archive
               tar -czf "release-assets/${pkg}-${version}.tar.gz" -C "$dir" bin/ralph.exe
+              
+              # zip archive
+              (cd "$dir" && zip -j "../release-assets/${pkg}-${version}.zip" bin/ralph.exe)
+              
+              # Standalone exe for direct download
+              cp "$dir/bin/ralph.exe" "release-assets/ralph-${platform}-${arch}-${version}.exe"
+              
             elif [ -f "$dir/bin/ralph" ]; then
+              # Unix (macOS/Linux): Create tar.gz only
+              echo "Packaging ${platform} ${arch}..."
               tar -czf "release-assets/${pkg}-${version}.tar.gz" -C "$dir" bin/ralph
             fi
           done
+          
+          # Generate SHA256 checksums
+          echo "Generating SHA256 checksums..."
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
+          
+          echo "Release assets:"
+          ls -la release-assets/
+
+      - name: Cleanup existing dev release
+        if: ${{ steps.publish.outputs.version != '' && steps.release-type.outputs.is_dev == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking for existing dev release..."
+          if gh release view "dev" >/dev/null 2>&1; then
+            echo "Deleting existing dev release and tag..."
+            gh release delete "dev" --yes --cleanup-tag
+            echo "Existing dev release deleted."
+          else
+            echo "No existing dev release found."
+          fi
+
+      - name: Create dev tag
+        if: ${{ steps.publish.outputs.version != '' && steps.release-type.outputs.is_dev == 'true' }}
+        run: |
+          echo "Creating dev tag at current commit..."
+          git tag -f dev
+          git push origin dev --force
+          echo "Dev tag created at ${GITHUB_SHA}"
 
       - name: Create GitHub release
         if: ${{ steps.publish.outputs.version != '' }}
@@ -77,42 +204,108 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${{ steps.publish.outputs.version }}"
-          prerelease="${{ steps.publish.outputs.prerelease }}"
-          tag="v${version}"
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists."
-            exit 0
+          is_dev="${{ steps.release-type.outputs.is_dev }}"
+          
+          if [ "$is_dev" = "true" ]; then
+            tag="dev"
+            title="Development Build"
+            
+            echo "Creating dev release..."
+            gh release create "$tag" \
+              --title "$title" \
+              --notes-file changelog.md \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          else
+            tag="v${version}"
+            title="$tag"
+            
+            # Check if release already exists
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release $tag already exists."
+              exit 0
+            fi
+            
+            echo "Creating production release ${tag}..."
+            gh release create "$tag" \
+              --title "$title" \
+              --notes-file changelog.md \
+              --target "$GITHUB_SHA"
           fi
-
-          flags=(--generate-notes --title "$tag" --target "$GITHUB_SHA")
-          if [ "$prerelease" = "true" ]; then
-            flags+=(--prerelease)
-          fi
-
-          gh release create "$tag" "${flags[@]}"
+          
+          echo "Release created: $tag"
 
       - name: Upload release binaries
         if: ${{ steps.publish.outputs.version != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tag="v${{ steps.publish.outputs.version }}"
-          if ls release-assets/*.tar.gz >/dev/null 2>&1; then
-            gh release upload "$tag" release-assets/*.tar.gz --clobber
+          is_dev="${{ steps.release-type.outputs.is_dev }}"
+          
+          if [ "$is_dev" = "true" ]; then
+            tag="dev"
+          else
+            tag="v${{ steps.publish.outputs.version }}"
+          fi
+          
+          echo "Uploading assets to release: $tag"
+          
+          # Upload all assets (tar.gz, zip, exe, checksums)
+          if ls release-assets/* >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber
+            echo "Assets uploaded successfully."
           else
             echo "No release assets found to upload."
           fi
 
       - name: Summary
         run: |
+          version="${{ steps.publish.outputs.version }}"
+          is_dev="${{ steps.release-type.outputs.is_dev }}"
+          prev_tag="${{ steps.changelog.outputs.prev_tag }}"
+          
           echo "## Publish Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ inputs.bump }}" ]; then
+          
+          if [ "$is_dev" = "true" ]; then
+            echo "- **Type**: Development release (rolling)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: \`dev\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Install**: \`bun install -g openralph@dev\`" >> $GITHUB_STEP_SUMMARY
+          elif [ -n "${{ inputs.bump }}" ]; then
             echo "- **Type**: Production release (${{ inputs.bump }} bump)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: \`v${version}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Install**: \`bun install -g openralph\`" >> $GITHUB_STEP_SUMMARY
           elif [ -n "${{ inputs.version }}" ]; then
             echo "- **Type**: Production release (version ${{ inputs.version }})" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- **Type**: Preview release" >> $GITHUB_STEP_SUMMARY
+            echo "- **Tag**: \`v${version}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- **Install**: \`bun install -g openralph\`" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "- **Install**: `bun install -g openralph`" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Changelog section
+          if [ "$prev_tag" != "none" ] && [ -n "$prev_tag" ]; then
+            echo "### Changelog Preview (since ${prev_tag})" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Changelog Preview (initial release)" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          head -20 changelog.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No changelog generated" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Asset list section
+          echo "### Release Assets" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if ls release-assets/* >/dev/null 2>&1; then
+            echo "| Asset | Size |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|------|" >> $GITHUB_STEP_SUMMARY
+            for file in release-assets/*; do
+              filename=$(basename "$file")
+              size=$(ls -lh "$file" | awk '{print $5}')
+              echo "| \`${filename}\` | ${size} |" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "No assets generated." >> $GITHUB_STEP_SUMMARY
+          fi
