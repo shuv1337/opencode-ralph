@@ -219,3 +219,32 @@ export {
 export {
   isRedundantTask,
 } from "./task-deduplication";
+
+// =============================================================================
+// Requirements Validation
+// =============================================================================
+
+export {
+  validateRequirements,
+  formatRequirementsError,
+} from "./requirements";
+
+export type {
+  RequirementsResult,
+} from "./requirements";
+
+// =============================================================================
+// Interrupt Menu
+// =============================================================================
+
+export {
+  InterruptMenuChoice,
+  createInterruptMenu,
+  showInterruptMenu,
+  formatMenuChoice,
+} from "./interrupt-menu";
+
+export type {
+  InterruptMenuOptions,
+  InterruptMenuController,
+} from "./interrupt-menu";
