@@ -34,6 +34,10 @@ import { useKeyboardReliable } from "./hooks/useKeyboardReliable";
 
 
 import { log } from "./lib/log";
+import {
+  validateRequirements,
+  formatRequirementsError,
+} from "./lib/requirements";
 import { addSteeringContext, createDebugSession } from "./loop";
 import { createLoopState, type LoopStateStore } from "./hooks/useLoopState";
 import { createLoopStats, type LoopStatsStore } from "./hooks/useLoopStats";
@@ -625,8 +629,26 @@ function AppContent(props: AppContentProps) {
   /**
    * Wrapper for togglePause that applies staged task status changes first.
    * This implements the deferred execution model for manual task overrides.
+   * Also validates requirements before starting from ready state.
    */
   const handleTogglePause = async () => {
+    // Validate requirements when starting from ready state
+    const status = props.state().status;
+    if (status === "ready") {
+      const reqResult = await validateRequirements(props.options.planFile);
+      if (!reqResult.valid) {
+        const errorMsg = formatRequirementsError(reqResult);
+        dialog.show(() => (
+          <DialogAlert
+            title="Missing Requirements"
+            message={errorMsg}
+            variant="error"
+          />
+        ));
+        return; // Don't proceed if requirements are not met
+      }
+    }
+    
     // Apply staged task status changes before resuming if any
     const staged = props.stagedTaskStatuses();
     if (Object.keys(staged).length > 0) {

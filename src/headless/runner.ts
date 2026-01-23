@@ -39,6 +39,22 @@ import {
   createSpinner,
   type SpinnerController,
 } from "../lib/spinner";
+import {
+  createInterruptMenu,
+  InterruptMenuChoice,
+  type InterruptMenuController,
+} from "../lib/interrupt-menu";
+import {
+  validateRequirements,
+  formatRequirementsError,
+} from "../lib/requirements";
+import { writeFile, unlink } from "node:fs/promises";
+import {
+  detectInstalledTerminals,
+  launchTerminal,
+  getAttachCommand,
+} from "../lib/terminal-launcher";
+import { loadConfig } from "../lib/config";
 
 /**
  * Event handler function type
@@ -108,6 +124,10 @@ export class HeadlessRunner {
   // Loading spinner for active loop state
   private spinner: SpinnerController | null = null;
 
+  // Interrupt menu for user choices
+  private interruptMenu: InterruptMenuController | null = null;
+  private isMenuActive = false;
+
   // Event emitter pattern
   private eventHandlers: Map<HeadlessEventType, Set<EventHandler>> = new Map();
 
@@ -176,7 +196,7 @@ export class HeadlessRunner {
     try {
       const shouldWait = await this.shouldWaitForStart();
       if (shouldWait) {
-        const startResult = await this.waitForStart();
+        const startResult = await this.waitForStart(loopOptions.planFile);
         if (!startResult) {
           // User cancelled
           log("headless", "User cancelled at press-to-start prompt");
@@ -399,16 +419,54 @@ export class HeadlessRunner {
 
   /**
    * Wait for user to press P to start or Q to quit.
+   * Validates requirements before allowing start.
    * 
+   * @param planFile - Path to the plan file for requirements validation
    * @returns True if user pressed P/Enter to start, false if cancelled
    */
-  private async waitForStart(): Promise<boolean> {
+  private async waitForStart(planFile: string): Promise<boolean> {
     // Only works with TTY
     if (!process.stdin.isTTY) {
       return true;
     }
 
     const write = this.config.write ?? ((text: string) => process.stdout.write(text));
+    
+    // Validate requirements before allowing start
+    const reqResult = await validateRequirements(planFile);
+    
+    if (!reqResult.valid) {
+      // Requirements not met: show error and only allow Q to quit
+      const errorMsg = formatRequirementsError(reqResult);
+      write(`\n\x1b[1;31m✗ ${errorMsg}\x1b[0m\n\n`);
+      write("\x1b[1;33m▶ Press [Q] to quit...\x1b[0m\n\n");
+      
+      return new Promise<boolean>((resolve) => {
+        const wasRaw = process.stdin.isRaw;
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+
+        const cleanup = () => {
+          process.stdin.setRawMode(wasRaw ?? false);
+          process.stdin.pause();
+          process.stdin.removeListener("data", onData);
+        };
+
+        const onData = (data: Buffer) => {
+          const key = data.toString().toLowerCase();
+          // Only allow quit keys when requirements are missing
+          if (key === "q" || key === "\x03" || key === "\x1b") {
+            cleanup();
+            resolve(false);
+          }
+          // Ignore all other keys including P
+        };
+
+        process.stdin.on("data", onData);
+      });
+    }
+    
+    // Requirements met: show normal start prompt
     write("\n\x1b[1;36m▶ Press [P] to start or [Q] to quit...\x1b[0m\n\n");
     write("\x1b[2m(Tip: You can scroll up in your terminal to see previous output)\x1b[0m\n\n");
 
@@ -456,34 +514,44 @@ export class HeadlessRunner {
 
   /**
    * Set up signal handlers for SIGINT, SIGTERM, and SIGHUP.
+   * SIGINT shows interrupt menu, SIGTERM force quits.
    */
   private setupSignalHandlers(
     onAbort: (code: HeadlessExitCode, message: string) => void
   ): void {
-    const handleSignal = (signal: NodeJS.Signals): void => {
-      log("headless", `Signal received: ${signal}`);
-      onAbort(HeadlessExitCodes.INTERRUPTED, `Interrupted (${signal})`);
+    // SIGINT shows the interrupt menu (user can choose)
+    const sigintHandler: SignalHandler = () => {
+      log("headless", "SIGINT received, showing interrupt menu");
+      void this.showInterruptMenu(onAbort);
     };
+    process.on("SIGINT", sigintHandler);
+    this.signalHandlerUnregisters.push(() => {
+      process.off("SIGINT", sigintHandler);
+    });
 
-    // Use process event handlers with cleanup tracking
-    const signals: NodeJS.Signals[] = ["SIGINT", "SIGTERM"];
+    // SIGTERM force quits (typically system request)
+    const sigtermHandler: SignalHandler = () => {
+      log("headless", "SIGTERM received, forcing quit");
+      onAbort(HeadlessExitCodes.INTERRUPTED, "Interrupted (SIGTERM)");
+    };
+    process.on("SIGTERM", sigtermHandler);
+    this.signalHandlerUnregisters.push(() => {
+      process.off("SIGTERM", sigtermHandler);
+    });
 
     // SIGHUP is not available on Windows
     if (process.platform !== "win32") {
-      signals.push("SIGHUP");
-    }
-
-    for (const signal of signals) {
-      const handler: SignalHandler = () => handleSignal(signal);
-      process.on(signal, handler);
-
-      // Track for cleanup
+      const sighupHandler: SignalHandler = () => {
+        log("headless", "SIGHUP received, showing interrupt menu");
+        void this.showInterruptMenu(onAbort);
+      };
+      process.on("SIGHUP", sighupHandler);
       this.signalHandlerUnregisters.push(() => {
-        process.off(signal, handler);
+        process.off("SIGHUP", sighupHandler);
       });
     }
 
-    log("headless", "Signal handlers registered", { signals });
+    log("headless", "Signal handlers registered");
   }
 
   /**
@@ -513,8 +581,9 @@ export class HeadlessRunner {
           break;
 
         case "interrupt":
-          log("headless", "Interrupt received from input handler");
-          onAbort(HeadlessExitCodes.INTERRUPTED, "User interrupt (Ctrl+C)");
+          // Show interrupt menu instead of immediate abort
+          log("headless", "Interrupt received from input handler, showing menu");
+          void this.showInterruptMenu(onAbort);
           break;
 
         case "force_quit":
@@ -523,11 +592,19 @@ export class HeadlessRunner {
           break;
 
         case "pause":
-          this.pause();
+          // Show interrupt menu for pause option
+          void this.showInterruptMenu(onAbort);
           break;
 
         case "resume":
-          this.resume();
+          // Resume if paused, otherwise ignore
+          if (this.state.status === "paused") {
+            void this.resumeSession();
+          }
+          break;
+
+        case "terminal":
+          void this.launchAttachedTerminal();
           break;
 
         case "command":
@@ -577,6 +654,186 @@ export class HeadlessRunner {
   private stopSpinner(): void {
     if (this.spinner) {
       this.spinner.stop();
+    }
+  }
+
+  /**
+   * Show the interrupt menu and handle user choice.
+   * Pauses spinner during menu display.
+   */
+  private async showInterruptMenu(
+    onAbort: (code: HeadlessExitCode, message: string) => void
+  ): Promise<void> {
+    // Guard against showing menu multiple times or in terminal state
+    if (this.isMenuActive) {
+      log("headless", "Interrupt menu already active, ignoring");
+      return;
+    }
+    if (!this.running || this.state.status === "complete" || this.state.status === "error") {
+      log("headless", "Cannot show menu in terminal state", { status: this.state.status });
+      onAbort(HeadlessExitCodes.INTERRUPTED, "Interrupted");
+      return;
+    }
+
+    this.isMenuActive = true;
+
+    // Pause spinner while menu is displayed
+    this.spinner?.pause();
+
+    // Ensure interrupt menu is created
+    if (!this.interruptMenu) {
+      this.interruptMenu = createInterruptMenu({
+        write: this.config.write,
+      });
+    }
+
+    try {
+      // Show menu and wait for user choice
+      const choice = await this.interruptMenu.show();
+
+      log("headless", "Interrupt menu choice", { choice });
+
+      this.isMenuActive = false;
+
+      switch (choice) {
+        case InterruptMenuChoice.FORCE_QUIT:
+          onAbort(HeadlessExitCodes.INTERRUPTED, "User force quit");
+          break;
+
+        case InterruptMenuChoice.PAUSE:
+          await this.pauseSession();
+          break;
+
+        case InterruptMenuChoice.RESUME:
+          // Just resume spinner and continue
+          this.spinner?.resume();
+          break;
+      }
+    } catch (error) {
+      log("headless", "Interrupt menu error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.isMenuActive = false;
+      // On error, default to resume
+      this.spinner?.resume();
+    }
+  }
+
+  /**
+   * Pause the session by creating .ralph-pause file and updating state.
+   */
+  private async pauseSession(): Promise<void> {
+    log("headless", "Pausing session");
+
+    try {
+      // Write .ralph-pause file with current PID
+      const pauseData = JSON.stringify({
+        pid: process.pid,
+        pausedAt: Date.now(),
+      });
+      await writeFile(".ralph-pause", pauseData, "utf-8");
+      log("headless", "Created .ralph-pause file");
+    } catch (error) {
+      log("headless", "Failed to create pause file", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Update state
+    this.state.status = "paused";
+    this.emitEvent({ type: "pause" });
+
+    const write = this.config.write ?? ((text: string) => process.stdout.write(text));
+    write("\n\x1b[1;33m⏸ Session paused.\x1b[0m Press [R] to resume.\n\n");
+  }
+
+  /**
+   * Resume the session by removing .ralph-pause file and updating state.
+   */
+  private async resumeSession(): Promise<void> {
+    if (this.state.status !== "paused") {
+      return;
+    }
+
+    log("headless", "Resuming session");
+
+    try {
+      // Remove .ralph-pause file
+      await unlink(".ralph-pause");
+      log("headless", "Removed .ralph-pause file");
+    } catch (error) {
+      // File might not exist, that's ok
+      log("headless", "Could not remove pause file", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    // Update state
+    this.state.status = "running";
+    this.emitEvent({ type: "resume" });
+
+    // Resume spinner
+    this.spinner?.resume();
+
+    const write = this.config.write ?? ((text: string) => process.stdout.write(text));
+    write("\n\x1b[1;32m▶ Session resumed.\x1b[0m\n\n");
+  }
+
+  /**
+   * Launch an external terminal attached to the current session.
+   * Uses terminal-launcher module with user's preferred terminal.
+   */
+  private async launchAttachedTerminal(): Promise<void> {
+    const write = this.config.write ?? ((text: string) => process.stdout.write(text));
+
+    // Check if in PTY mode (can't attach)
+    if (this.state.adapterMode === "pty") {
+      log("headless", "Cannot open terminal in PTY mode");
+      write("[!] Cannot open terminal in PTY mode\n");
+      return;
+    }
+
+    // Check if session exists
+    if (!this.state.sessionId) {
+      log("headless", "No active session to attach to");
+      write("[!] No active session to attach to\n");
+      return;
+    }
+
+    try {
+      // Detect terminals
+      const terminals = await detectInstalledTerminals();
+      if (terminals.length === 0) {
+        log("headless", "No supported terminal emulators found");
+        write("[!] No supported terminal emulators found\n");
+        return;
+      }
+
+      // Get preferred terminal or use first detected
+      const config = loadConfig();
+      let terminal = terminals[0];
+      if (config.preferredTerminal) {
+        const preferred = terminals.find(t => t.name === config.preferredTerminal);
+        if (preferred) terminal = preferred;
+      }
+
+      // Generate attach command
+      const serverUrl = this.state.serverUrl || "http://localhost:10101";
+      const cmd = getAttachCommand(serverUrl, this.state.sessionId);
+
+      // Launch terminal
+      const result = await launchTerminal(terminal, cmd);
+      if (result.success) {
+        log("headless", "Opened terminal with session", { terminal: terminal.name });
+        write(`[✓] Opened ${terminal.name} with session\n`);
+      } else {
+        log("headless", "Failed to open terminal", { error: result.error });
+        write(`[!] Failed to open terminal: ${result.error}\n`);
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      log("headless", "Terminal launch error", { error: errorMsg });
+      write(`[!] Terminal launch error: ${errorMsg}\n`);
     }
   }
 
@@ -927,6 +1184,13 @@ export class HeadlessRunner {
       this.spinner.stop();
       this.spinner = null;
       log("headless", "Spinner stopped");
+    }
+
+    // Clean up interrupt menu
+    if (this.interruptMenu) {
+      this.interruptMenu.destroy();
+      this.interruptMenu = null;
+      log("headless", "Interrupt menu destroyed");
     }
 
     // Run cleanup if enabled
