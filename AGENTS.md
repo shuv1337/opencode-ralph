@@ -128,6 +128,24 @@ useKeyboard((e: KeyEvent) => {
 
 6. **Shell Default**: macOS Catalina+ uses `zsh` as default shell, not `bash`
 
+## Headless Mode Features
+
+New interactive features are available when running in headless mode (default):
+
+### Interactive Interrupt Menu
+When `Ctrl+C` is pressed during a running session, an interactive menu appears instead of immediately terminating the process. Options include:
+- `[Q] Force Quit`: Immediately terminate the process.
+- `[P] Pause`: Pause the current session (if supported).
+- `[R] Resume`: Resume the session and close the menu.
+
+### Requirements Validation
+The agent validates necessary files before allowing certain actions.
+- **Product Requirements**: The `[P]` (Plan) action is blocked if `prd.json` is missing in the current directory. An error message will be displayed indicating the missing requirement.
+
+### Terminal Session Launch
+- Pressing `t` while a session is active opens a new external terminal window attached to the current session context.
+- **Note**: This feature is disabled if the session is already running in PTY mode.
+
 ## Local Development & Building
 
 
@@ -206,20 +224,59 @@ git push origin master
 
 3. **Forgetting to rebuild**: The version is baked into the binary at build time. Changing package.json does nothing until you rebuild.
 
-## NPM Publishing
+## Release Workflow
 
-To release a new version to npm, run:
+### Rolling Dev Releases
+
+Every push to `master` automatically updates the `dev` release:
+
+- A single `dev` release is maintained (not multiple dev releases)
+- The release is marked as a **prerelease**
+- Assets are replaced on each push with the latest build
+- Version format: `X.Y.Z-dev.YYYYMMDD.HHMMSS`
+
+**Important**: Do NOT manually create, delete, or modify the `dev` release - CI manages it automatically.
+
+### Production Releases
+
+To create a production release:
 
 ```bash
 gh workflow run publish.yml --field bump=patch
 ```
 
 Options for `bump`:
-- `patch` - Bug fixes (0.1.0 -> 0.1.1)
-- `minor` - New features (0.1.0 -> 0.2.0)
-- `major` - Breaking changes (0.1.0 -> 1.0.0)
+- `patch` - Bug fixes (0.1.0 → 0.1.1)
+- `minor` - New features (0.1.0 → 0.2.0)
+- `major` - Breaking changes (0.1.0 → 1.0.0)
 
-The workflow will automatically:
-1. Build binaries for all platforms (darwin/linux/windows, arm64/x64)
-2. Publish platform-specific packages (`openralph-{platform}-{arch}`)
-3. Publish the main wrapper package (`openralph`)
+Production releases:
+- Create an immutable `vX.Y.Z` tag and GitHub release
+- Generate a changelog from commits since the last production release
+- Publish to npm (`openralph` and platform-specific packages)
+
+### Release Assets
+
+Each release includes binaries for all supported platforms:
+
+| Platform      | Formats                              |
+|---------------|--------------------------------------|
+| Windows x64   | `.tar.gz`, `.zip`, standalone `.exe` |
+| macOS x64     | `.tar.gz`                            |
+| macOS arm64   | `.tar.gz`                            |
+| Linux x64     | `.tar.gz`                            |
+| Linux arm64   | `.tar.gz`                            |
+
+All releases include a `SHA256SUMS.txt` file for binary verification:
+
+```bash
+# Verify downloaded binary
+sha256sum -c SHA256SUMS.txt
+```
+
+### Important Notes
+
+1. **Dev releases are unstable** - They include a warning banner and should only be used for testing
+2. **Don't modify the dev release manually** - The CI pipeline manages creation, updates, and cleanup
+3. **Verify binaries** - Always check `SHA256SUMS.txt` before installing from releases
+4. **Changelog scope** - Dev releases show commits since last production release; production releases show commits since previous production release
