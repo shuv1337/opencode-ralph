@@ -170,6 +170,10 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
   let lastModel: string | undefined;
   // Token stats are accumulated and shown only in the footer
   let accumulatedTokens = { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 };
+  // Deduplicate error messages within a short window
+  let lastErrorMessage: string | undefined;
+  let lastErrorTime = 0;
+  const ERROR_DEDUP_WINDOW_MS = 1000; // 1 second window for deduplication
 
   const lineWithTimestamp = (event: HeadlessEvent, line: string): string => {
     if (!options.timestamps || !event.timestamp) {
@@ -192,9 +196,13 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         
       case "iteration_end":
         line = colorize(
-          `iteration ${event.iteration} end duration_ms=${event.durationMs} commits=${event.commits}`,
-          "textMuted",
-          { dim: true, mode }
+          `[*] Iteration ${event.iteration} complete`,
+          "success",
+          { mode }
+        ) + colorize(
+          ` | ${event.durationMs}ms | ${event.commits} commit${event.commits !== 1 ? "s" : ""}`,
+          "text",
+          { mode }
         );
         break;
         
@@ -234,11 +242,10 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "stats":
-        line = colorize(
-          `stats commits=${event.commits} +${event.linesAdded} -${event.linesRemoved}`,
-          "textMuted",
-          { dim: true, mode }
-        );
+        line = colorize("[>] Stats:", "info", { mode }) + 
+          colorize(` ${event.commits} commit${event.commits !== 1 ? "s" : ""}`, "text", { mode }) +
+          colorize(` +${event.linesAdded}`, "success", { mode }) +
+          colorize(` -${event.linesRemoved}`, "error", { mode });
         break;
         
       case "pause":
@@ -250,10 +257,19 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "idle":
-        line = colorize(`idle ${event.isIdle}`, "textMuted", { dim: true, mode });
+        line = event.isIdle 
+          ? colorize("[||] Waiting for input...", "warning", { mode })
+          : colorize("[>] Processing...", "info", { mode });
         break;
         
       case "error":
+        // Deduplicate identical errors within a short window
+        const now = Date.now();
+        if (event.message === lastErrorMessage && (now - lastErrorTime) < ERROR_DEDUP_WINDOW_MS) {
+          return; // Suppress duplicate error
+        }
+        lastErrorMessage = event.message;
+        lastErrorTime = now;
         line = `${renderer.renderOutcome("error")} ${colorize(event.message, "error", { mode })}`;
         break;
         
@@ -266,7 +282,10 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         // Only emit model info when it changes, not on every occurrence
         if (event.model !== lastModel) {
           lastModel = event.model;
-          line = colorize(`Model: ${event.model}`, "info", { mode });
+          // Model uses cyan (info) for the value, bold dim for the label
+          const modelLabel = colorize("Model:", "text", { bold: true, dim: true, mode });
+          const modelValue = colorize(event.model, "info", { mode });
+          line = `${modelLabel} ${modelValue}`;
         } else {
           // Suppress duplicate model emissions
           return;
@@ -274,27 +293,30 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "sandbox":
-        line = colorize(
-          `sandbox: enabled=${event.enabled} mode=${event.mode ?? "unknown"}`,
-          "textMuted",
+        // Sandbox uses yellow for values, bold dim for labels
+        const sandboxLabel = colorize("sandbox:", "text", { bold: true, dim: true, mode });
+        const sandboxEnabled = colorize(
+          event.enabled ? "enabled" : "disabled",
+          event.enabled ? "success" : "textMuted",
           { mode }
         );
+        const sandboxMode = colorize(event.mode ?? "unknown", "yellow", { mode });
+        line = `${sandboxLabel} ${sandboxEnabled} mode=${sandboxMode}`;
         break;
         
       case "rate_limit":
-        line = colorize(
-          `rate_limit: fallback=${event.fallbackAgent}`,
-          "warning",
-          { mode }
-        );
+        // Rate limit uses warning color, bold dim for labels
+        const rateLimitLabel = colorize("rate_limit:", "text", { bold: true, dim: true, mode });
+        const fallbackValue = colorize(event.fallbackAgent, "warning", { mode });
+        line = `${rateLimitLabel} fallback=${fallbackValue}`;
         break;
         
       case "active_agent":
-        line = colorize(
-          `agent: ${event.plugin} (${event.reason})`,
-          "textMuted",
-          { mode }
-        );
+        // Agent uses green for the value, bold dim for labels
+        const agentLabel = colorize("agent:", "text", { bold: true, dim: true, mode });
+        const agentPlugin = colorize(event.plugin, "success", { mode });
+        const agentReason = colorize(`(${event.reason})`, "textMuted", { dim: true, mode });
+        line = `${agentLabel} ${agentPlugin} ${agentReason}`;
         break;
         
       case "tokens":
@@ -321,11 +343,10 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "session":
-        line = colorize(
-          `session ${event.action}: ${event.sessionId}`,
-          "textMuted",
-          { mode }
-        );
+        // Session uses secondary (purple) for the session ID, bold dim for labels
+        const sessionLabel = colorize(`session ${event.action}:`, "text", { bold: true, dim: true, mode });
+        const sessionId = colorize(event.sessionId, "secondary", { mode });
+        line = `${sessionLabel} ${sessionId}`;
         break;
         
       case "prompt":
@@ -338,7 +359,10 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         break;
         
       case "adapter_mode":
-        line = colorize(`adapter mode: ${event.mode}`, "textMuted", { mode });
+        // Adapter mode uses magenta for the value, bold dim for labels
+        const adapterLabel = colorize("adapter mode:", "text", { bold: true, dim: true, mode });
+        const adapterValue = colorize(event.mode, "magenta", { mode });
+        line = `${adapterLabel} ${adapterValue}`;
         break;
         
       default:

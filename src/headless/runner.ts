@@ -30,6 +30,15 @@ import {
   forceTerminateDescendants,
 } from "../lib/process-cleanup";
 import { log } from "../lib/log";
+import {
+  createHeadlessInputController,
+  type HeadlessInputController,
+  type InputEvent,
+} from "../lib/headless-input";
+import {
+  createSpinner,
+  type SpinnerController,
+} from "../lib/spinner";
 
 /**
  * Event handler function type
@@ -92,6 +101,12 @@ export class HeadlessRunner {
   private running = false;
   private limitTimer: ReturnType<typeof setTimeout> | undefined;
   private signalHandlerUnregisters: Array<() => void> = [];
+  
+  // Input handling for keybinds
+  private inputController: HeadlessInputController | null = null;
+  
+  // Loading spinner for active loop state
+  private spinner: SpinnerController | null = null;
 
   // Event emitter pattern
   private eventHandlers: Map<HeadlessEventType, Set<EventHandler>> = new Map();
@@ -187,6 +202,14 @@ export class HeadlessRunner {
     this.setupSignalHandlers((code, message) => {
       exitCode = this.requestAbort(code, message, exitCode);
     });
+
+    // Set up input controller for termination keybinds
+    this.setupInputController((code, message) => {
+      exitCode = this.requestAbort(code, message, exitCode);
+    });
+
+    // Set up loading spinner for active loop state
+    this.setupSpinner();
 
     // Set up max time limit if configured
     if (
@@ -464,6 +487,100 @@ export class HeadlessRunner {
   }
 
   /**
+   * Set up input controller for termination keybinds.
+   * Handles Ctrl+C, Ctrl+D, q, /exit, /quit commands.
+   */
+  private setupInputController(
+    onAbort: (code: HeadlessExitCode, message: string) => void
+  ): void {
+    // Create input controller with configured write function
+    this.inputController = createHeadlessInputController({
+      write: this.config.write,
+      showFeedback: true,
+      handleSignals: false, // We handle signals separately via setupSignalHandlers
+    });
+
+    // Wire up input events to runner actions
+    this.inputController.onInput((event: InputEvent) => {
+      switch (event.type) {
+        case "exit":
+        case "eof":
+          log("headless", `Exit requested via ${event.type}`, { 
+            command: event.command, 
+            key: event.key 
+          });
+          onAbort(HeadlessExitCodes.INTERRUPTED, `User exit (${event.type})`);
+          break;
+
+        case "interrupt":
+          log("headless", "Interrupt received from input handler");
+          onAbort(HeadlessExitCodes.INTERRUPTED, "User interrupt (Ctrl+C)");
+          break;
+
+        case "force_quit":
+          log("headless", "Force quit received from input handler");
+          onAbort(HeadlessExitCodes.INTERRUPTED, "User force quit");
+          break;
+
+        case "pause":
+          this.pause();
+          break;
+
+        case "resume":
+          this.resume();
+          break;
+
+        case "command":
+          // Log unrecognized commands for debugging
+          log("headless", "Unrecognized command", { command: event.command });
+          break;
+
+        case "key":
+          // Ignore generic key presses
+          break;
+      }
+    });
+
+    // Start the input controller
+    this.inputController.start();
+    log("headless", "Input controller started");
+  }
+
+  /**
+   * Set up loading spinner for active loop state.
+   * Shows animated spinner when processing is active.
+   */
+  private setupSpinner(): void {
+    this.spinner = createSpinner({
+      write: this.config.write,
+      text: "Looping...",
+      hideCursor: true,
+    });
+    log("headless", "Spinner initialized");
+  }
+
+  /**
+   * Start the spinner animation
+   */
+  private startSpinner(text?: string): void {
+    if (this.spinner) {
+      if (text) {
+        this.spinner.setText(text);
+      }
+      this.spinner.start();
+    }
+  }
+
+  /**
+   * Stop the spinner animation
+   */
+  private stopSpinner(): void {
+    if (this.spinner) {
+      this.spinner.stop();
+    }
+  }
+
+  /**
    * Build callbacks that wrap output callbacks with runner-specific logic.
    */
   private buildCallbacks(
@@ -479,6 +596,9 @@ export class HeadlessRunner {
         this.stats.iterations = iteration;
 
         this.emitEvent({ type: "iteration_start", iteration });
+
+        // Start spinner for this iteration
+        this.startSpinner(`Iteration ${iteration} in progress...`);
 
         // Check max iterations limit
         if (
@@ -518,6 +638,9 @@ export class HeadlessRunner {
         duration: number,
         commits: number
       ) => {
+        // Stop spinner when iteration completes
+        this.stopSpinner();
+
         this.emitEvent({
           type: "iteration_end",
           iteration,
@@ -569,15 +692,24 @@ export class HeadlessRunner {
       onIdleChanged: (isIdle: boolean) => {
         this.state.isIdle = isIdle;
         this.emitEvent({ type: "idle", isIdle });
+        
+        // Control spinner based on idle state
+        if (isIdle) {
+          this.stopSpinner();
+        } else {
+          this.startSpinner("Processing...");
+        }
       },
 
       onComplete: () => {
+        this.stopSpinner();
         this.state.status = "complete";
         onCompleted();
         this.emitEvent({ type: "complete" });
       },
 
       onError: (error: string) => {
+        this.stopSpinner();
         this.state.error = error;
         this.emitEvent({ type: "error", message: error });
       },
@@ -726,6 +858,20 @@ export class HeadlessRunner {
       event = { ...event, timestamp: Date.now() };
     }
 
+    // Pause spinner before emitting visible output to prevent interference
+    // Events that produce visible output should clear the spinner line first
+    const visibleEvents: HeadlessEventType[] = [
+      "tool", "reasoning", "error", "progress", "stats", "idle",
+      "iteration_start", "iteration_end", "complete", "pause", "resume",
+      "model", "sandbox", "active_agent", "adapter_mode",
+      "session", "rate_limit", "backoff", "backoff_cleared", "prompt",
+    ];
+    
+    const wasSpinnerRunning = this.spinner?.isRunning() ?? false;
+    if (wasSpinnerRunning && visibleEvents.includes(event.type)) {
+      this.spinner?.pause();
+    }
+
     // Emit to output if available
     this.output?.emit(event);
 
@@ -742,6 +888,11 @@ export class HeadlessRunner {
           });
         }
       });
+    }
+
+    // Resume spinner after emitting visible events (if it was running and we're still processing)
+    if (wasSpinnerRunning && visibleEvents.includes(event.type) && !this.state.isIdle) {
+      this.spinner?.resume();
     }
   }
 
@@ -762,6 +913,21 @@ export class HeadlessRunner {
       unregister();
     }
     this.signalHandlerUnregisters = [];
+
+    // Stop input controller
+    if (this.inputController) {
+      this.inputController.showTerminationFeedback("Session terminated.");
+      this.inputController.stop();
+      this.inputController = null;
+      log("headless", "Input controller stopped");
+    }
+
+    // Stop spinner
+    if (this.spinner) {
+      this.spinner.stop();
+      this.spinner = null;
+      log("headless", "Spinner stopped");
+    }
 
     // Run cleanup if enabled
     if (this.config.cleanup?.enabled !== false) {
