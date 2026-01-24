@@ -54,6 +54,7 @@ import {
   launchTerminal,
   getAttachCommand,
 } from "../lib/terminal-launcher";
+import { TerminalService } from "../lib/terminal-service";
 import { loadConfig } from "../lib/config";
 
 /**
@@ -124,9 +125,15 @@ export class HeadlessRunner {
   // Loading spinner for active loop state
   private spinner: SpinnerController | null = null;
 
+  // Terminal service for buffer management
+  private terminalService: TerminalService;
+
   // Interrupt menu for user choices
   private interruptMenu: InterruptMenuController | null = null;
   private isMenuActive = false;
+
+  // Stats deduplication
+  private lastStatsJson: string = "{}";
 
   // Event emitter pattern
   private eventHandlers: Map<HeadlessEventType, Set<EventHandler>> = new Map();
@@ -139,6 +146,7 @@ export class HeadlessRunner {
   constructor(config: HeadlessConfig) {
     this.config = config;
     this.abortController = new AbortController();
+    this.terminalService = new TerminalService(config.write);
 
     // Initialize state
     this.state = {
@@ -188,6 +196,9 @@ export class HeadlessRunner {
       write: this.config.write,
       banner: this.config.banner,
     });
+
+    // Clear terminal buffer at the start of execution (Phase 2, Task 4)
+    this.clearBuffer();
 
     // showBanner handles only the ASCII banner display
     this.output.showBanner();
@@ -898,6 +909,9 @@ export class HeadlessRunner {
         // Stop spinner when iteration completes
         this.stopSpinner();
 
+        // Clear terminal buffer between iterations (Phase 2, Task 4)
+        this.clearBuffer();
+
         this.emitEvent({
           type: "iteration_end",
           iteration,
@@ -1075,14 +1089,32 @@ export class HeadlessRunner {
 
   /**
    * Emit current statistics as an event.
+   * Only emits if the stats have actually changed (Phase 2, Task 4).
    */
   private emitStats(): void {
-    this.emitEvent({
-      type: "stats",
+    const currentStats = {
       commits: this.stats.commits,
       linesAdded: this.stats.linesAdded,
       linesRemoved: this.stats.linesRemoved,
+    };
+    
+    const statsJson = JSON.stringify(currentStats);
+    if (statsJson === this.lastStatsJson) {
+      return; // Deduplicate
+    }
+    
+    this.lastStatsJson = statsJson;
+    this.emitEvent({
+      type: "stats",
+      ...currentStats,
     });
+  }
+
+  /**
+   * Clear the terminal buffer if interactive (Phase 2, Task 4).
+   */
+  private clearBuffer(): void {
+    this.terminalService.clearBuffer(true);
   }
 
   /**
@@ -1122,6 +1154,7 @@ export class HeadlessRunner {
       "iteration_start", "iteration_end", "complete", "pause", "resume",
       "model", "sandbox", "active_agent", "adapter_mode",
       "session", "rate_limit", "backoff", "backoff_cleared", "prompt",
+      "plan_modified",
     ];
     
     const wasSpinnerRunning = this.spinner?.isRunning() ?? false;
