@@ -129,6 +129,16 @@ export function isLegacyConsole(): boolean {
 }
 
 /**
+ * Check if Virtual Terminal (VT) sequences are supported.
+ * 
+ * @returns boolean - true if VT sequences are supported
+ */
+export function isVTSupported(): boolean {
+  if (process.platform !== "win32") return true;
+  return !isLegacyConsole();
+}
+
+/**
  * Get Windows-specific environment variables for PTY spawning.
  * These help ensure proper terminal emulation in child processes.
  * 

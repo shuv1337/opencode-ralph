@@ -36,6 +36,22 @@ export function hasAnsiCodes(text: string): boolean {
 }
 
 /**
+ * Clear the terminal screen and optionally the scrollback buffer.
+ * 
+ * @param scrollback - Whether to clear the scrollback buffer (default: true)
+ */
+export function clearTerminal(scrollback: boolean = true): void {
+  // \x1b[2J: Clear screen
+  // \x1b[H: Move cursor to home (0,0)
+  process.stdout.write("\x1b[2J\x1b[H");
+
+  if (scrollback) {
+    // \x1b[3J: Clear scrollback buffer
+    process.stdout.write("\x1b[3J");
+  }
+}
+
+/**
  * Strip ANSI codes and truncate for display.
  * 
  * @param text - The text to sanitize
