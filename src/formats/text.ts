@@ -354,9 +354,11 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         line = colorize("[PROMPT] " + event.prompt.substring(0, 100) + "...", "textMuted", { dim: true, mode });
         break;
         
-      case "plan_modified":
-        line = colorize("[PLAN] modified", "info", { mode });
+      case "plan_modified": {
+        const icon = renderer.renderToolIcon("task");
+        line = `${icon} ${colorize("Plan", "violet", { mode })}: modified`;
         break;
+      }
         
       case "adapter_mode":
         // Adapter mode uses magenta for the value, bold dim for labels
