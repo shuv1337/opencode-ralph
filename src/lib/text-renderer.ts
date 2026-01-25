@@ -217,31 +217,31 @@ type AnsiColorName = keyof typeof ANSI_COLORS;
  * All 21+ tools from the spec.
  */
 export const TOOL_TEXT_MAP: Record<string, string> = {
-  read: "[READ]",
-  write: "[WRITE]",
-  edit: "[EDIT]",
-  bash: "[BASH]",
-  glob: "[GLOB]",
-  grep: "[GREP]",
-  task: "[TASK]",
-  todowrite: "[TODO-W]",
-  todoread: "[TODO-R]",
-  thought: "[THINK]",
-  lsp: "[LSP]",
-  websearch: "[WEB]",
-  webfetch: "[FETCH]",
-  codesearch: "[CODE]",
-  mcp: "[MCP]",
-  tavily: "[TAVILY]",
-  context7: "[C7]",
-  exa: "[EXA]",
-  gh: "[GH]",
-  github: "[GH]",
-  brave: "[BRAVE]",
-  custom: "[TOOL]",
-  skill: "[SKILL]",
-  success: "[OK]",
-  info: "[INFO]",
+  read: "READ",
+  write: "WRITE",
+  edit: "EDIT",
+  bash: "BASH",
+  glob: "GLOB",
+  grep: "GREP",
+  task: "TASK",
+  todowrite: "TODO-W",
+  todoread: "TODO-R",
+  thought: "USER",
+  lsp: "LSP",
+  websearch: "WEB",
+  webfetch: "FETCH",
+  codesearch: "CODE",
+  mcp: "MCP",
+  tavily: "TAVILY",
+  context7: "C7",
+  exa: "EXA",
+  gh: "GH",
+  github: "GH",
+  brave: "BRAVE",
+  custom: "TOOL",
+  skill: "SKILL",
+  success: "OK",
+  info: "INFO",
 };
 
 /**
@@ -250,31 +250,31 @@ export const TOOL_TEXT_MAP: Record<string, string> = {
  * These are monospace-compatible UTF-8 characters.
  */
 export const TOOL_UNICODE_MAP: Record<string, string> = {
-  read: "[◀]",
-  write: "[▶]",
-  edit: "[◇]",
-  bash: "[$]",
-  glob: "[*]",
-  grep: "[/]",
-  task: "[▣]",
-  todowrite: "[☑]",
-  todoread: "[▣]",
-  thought: "[◈]",
-  lsp: "[◎]",
-  websearch: "[◉]",
-  webfetch: "[↓]",
-  codesearch: "[/]",
-  mcp: "[+]",
-  tavily: "[◉]",
-  context7: "[+]",
-  exa: "[/]",
-  gh: "[#]",
-  github: "[#]",
-  brave: "[◉]",
-  custom: "[◆]",
-  skill: "[★]",
-  success: "[✓]",
-  info: "[i]",
+  read: "◀",
+  write: "▶",
+  edit: "◇",
+  bash: "$",
+  glob: "*",
+  grep: "/",
+  task: "▣",
+  todowrite: "☑",
+  todoread: "▣",
+  thought: "◈",
+  lsp: "◎",
+  websearch: "◉",
+  webfetch: "↓",
+  codesearch: "/",
+  mcp: "+",
+  tavily: "◉",
+  context7: "+",
+  exa: "/",
+  gh: "#",
+  github: "#",
+  brave: "◉",
+  custom: "◆",
+  skill: "★",
+  success: "✓",
+  info: "i",
 };
 
 // ============================================================================
@@ -285,17 +285,17 @@ export const TOOL_UNICODE_MAP: Record<string, string> = {
  * Ralph status to ASCII text mapping.
  */
 export const STATUS_TEXT_MAP: Record<RalphStatus, string> = {
-  starting: "[START]",
-  ready: "[READY]",
-  running: "[RUN]",
-  selecting: "[SELECT]",
-  executing: "[EXEC]",
-  pausing: "[PAUSING]",
-  paused: "[PAUSED]",
-  stopped: "[STOP]",
-  complete: "[DONE]",
-  idle: "[IDLE]",
-  error: "[ERROR]",
+  starting: "START",
+  ready: "READY",
+  running: "RUN",
+  selecting: "SELECT",
+  executing: "EXEC",
+  pausing: "PAUSING",
+  paused: "PAUSED",
+  stopped: "STOP",
+  complete: "DONE",
+  idle: "IDLE",
+  error: "ERROR",
 };
 
 /**
@@ -303,17 +303,17 @@ export const STATUS_TEXT_MAP: Record<RalphStatus, string> = {
  * Uses proper terminal-native symbols, NOT emojis.
  */
 export const STATUS_UNICODE_MAP: Record<RalphStatus, string> = {
-  starting: "[○]",
-  ready: "[●]",
-  running: "[▶]",
-  selecting: "[◐]",
-  executing: "[▶]",
-  pausing: "[◆]",
-  paused: "[◆]",
-  stopped: "[■]",
-  complete: "[✓]",
-  idle: "[○]",
-  error: "[✗]",
+  starting: "○",
+  ready: "●",
+  running: "▶",
+  selecting: "◐",
+  executing: "▶",
+  pausing: "◆",
+  paused: "◆",
+  stopped: "■",
+  complete: "✓",
+  idle: "○",
+  error: "✗",
 };
 
 /**
@@ -341,26 +341,26 @@ export const STATUS_COLOR_MAP: Record<RalphStatus, AnsiColorName> = {
  * Task status to ASCII text mapping.
  */
 export const TASK_STATUS_TEXT_MAP: Record<TaskStatus, string> = {
-  done: "[X]",
-  active: "[>]",
-  actionable: "[>]",
-  pending: "[ ]",
-  blocked: "[-]",
-  error: "[!]",
-  closed: "[X]",
+  done: "X",
+  active: ">",
+  actionable: ">",
+  pending: " ",
+  blocked: "-",
+  error: "!",
+  closed: "X",
 };
 
 /**
  * Task status to Unicode symbol mapping.
  */
 export const TASK_STATUS_UNICODE_MAP: Record<TaskStatus, string> = {
-  done: "[✓]",
-  active: "[▶]",
-  actionable: "[▶]",
-  pending: "[○]",
-  blocked: "[⊘]",
-  error: "[✗]",
-  closed: "[✓]",
+  done: "✓",
+  active: "▶",
+  actionable: "▶",
+  pending: "○",
+  blocked: "⊘",
+  error: "✗",
+  closed: "✓",
 };
 
 /**
@@ -384,17 +384,17 @@ export const TASK_STATUS_COLOR_MAP: Record<TaskStatus, AnsiColorName> = {
  * Activity event to ASCII text mapping.
  */
 export const EVENT_TEXT_MAP: Record<ActivityEventType, string> = {
-  session_start: "[START]",
-  session_idle: "[IDLE]",
-  task: "[TASK]",
-  file_edit: "[EDIT]",
-  file_read: "[READ]",
-  error: "[ERROR]",
-  user_message: "[USER]",
-  assistant_message: "[BOT]",
-  reasoning: "[THINK]",
-  tool_use: "[TOOL]",
-  info: "[INFO]",
+  session_start: "START",
+  session_idle: "IDLE",
+  task: "TASK",
+  file_edit: "EDIT",
+  file_read: "READ",
+  error: "ERROR",
+  user_message: "USER",
+  assistant_message: "BOT",
+  reasoning: "USER",
+  tool_use: "TOOL",
+  info: "INFO",
 };
 
 /**
@@ -402,17 +402,17 @@ export const EVENT_TEXT_MAP: Record<ActivityEventType, string> = {
  * Uses proper terminal-native symbols, NOT emojis.
  */
 export const EVENT_UNICODE_MAP: Record<ActivityEventType, string> = {
-  session_start: "[▶]",
-  session_idle: "[◆]",
-  task: "[☐]",
-  file_edit: "[◇]",
-  file_read: "[◀]",
-  error: "[✗]",
-  user_message: "[→]",
-  assistant_message: "[←]",
-  reasoning: "[◈]",
-  tool_use: "[◆]",
-  info: "[i]",
+  session_start: "▶",
+  session_idle: "◆",
+  task: "☐",
+  file_edit: "◇",
+  file_read: "◀",
+  error: "✗",
+  user_message: "→",
+  assistant_message: "←",
+  reasoning: "◈",
+  tool_use: "◆",
+  info: "i",
 };
 
 /**
@@ -440,10 +440,10 @@ export const EVENT_COLOR_MAP: Record<ActivityEventType, AnsiColorName> = {
  * Outcome to ASCII text mapping.
  */
 export const OUTCOME_TEXT_MAP: Record<OutcomeType, string> = {
-  success: "[OK]",
-  error: "[ERR]",
-  running: "[...]",
-  warning: "[WARN]",
+  success: "OK",
+  error: "ERR",
+  running: "...",
+  warning: "WARN",
 };
 
 /**
@@ -451,10 +451,10 @@ export const OUTCOME_TEXT_MAP: Record<OutcomeType, string> = {
  * Uses proper terminal-native symbols, NOT emojis.
  */
 export const OUTCOME_UNICODE_MAP: Record<OutcomeType, string> = {
-  success: "[✓]",
-  error: "[✗]",
-  running: "[●]",
-  warning: "[!]",
+  success: "✓",
+  error: "✗",
+  running: "●",
+  warning: "!",
 };
 
 /**
@@ -629,10 +629,10 @@ export function createTextRenderer(options?: TextRendererOptions): TextRenderer 
 
   // ASCII symbol overrides
   const symbols = {
-    toolPrefix: options?.asciiSymbols?.toolPrefix ?? "[",
-    toolSuffix: options?.asciiSymbols?.toolSuffix ?? "]",
-    statusOpen: options?.asciiSymbols?.statusOpen ?? "[",
-    statusClose: options?.asciiSymbols?.statusClose ?? "]",
+    toolPrefix: options?.asciiSymbols?.toolPrefix ?? "",
+    toolSuffix: options?.asciiSymbols?.toolSuffix ?? "",
+    statusOpen: options?.asciiSymbols?.statusOpen ?? "",
+    statusClose: options?.asciiSymbols?.statusClose ?? "",
     separatorChar: options?.asciiSymbols?.separatorChar ?? (mode === "ascii" || mode === "minimal" ? "-" : "─"),
     progressOpen: options?.asciiSymbols?.progressOpen ?? "[",
     progressClose: options?.asciiSymbols?.progressClose ?? "]",
@@ -780,8 +780,7 @@ export function createTextRenderer(options?: TextRendererOptions): TextRenderer 
     const empty = symbols.progressEmpty.repeat(emptyCount);
     const bar = `${symbols.progressOpen}${fill}${empty}${symbols.progressClose}`;
 
-    const taskLabel = renderToolIcon("task");
-    const progress = `${taskLabel} ${done}/${total} ${bar} ${percent}%`;
+    const progress = `${done}/${total} ${bar} ${percent}%`;
 
     return progress;
   }
