@@ -95,8 +95,8 @@ export function renderKeybindHints(options: KeybindHintsOptions = {}): string {
   return filtered
     .map((kb) => {
       const keyStr = useColors 
-        ? `${ANSI.bold}[${kb.key}]${ANSI.reset}` 
-        : `[${kb.key}]`;
+        ? `${ANSI.bold}${kb.key}${ANSI.reset}` 
+        : kb.key;
       
       const labelStr = useColors && kb.color
         ? `${kb.color}${kb.label}${ANSI.reset}`
