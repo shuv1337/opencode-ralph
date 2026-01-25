@@ -60,7 +60,7 @@ describe("Runtime Hints Regression", () => {
     
     // Verify runtime hints are present
     expect(fullOutput).toContain("Pause/Menu");
-    expect(fullOutput).toContain("[P]");
+    expect(fullOutput).toContain(" P ");
     
     // Verify it happens after/near start
     // We can't strictly check ordering in accumulated string easily without index checks

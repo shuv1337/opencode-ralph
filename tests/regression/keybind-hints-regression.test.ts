@@ -82,8 +82,8 @@ describe("Keybind Hints Regression", () => {
     // Verify it doesn't contain Pause/Quit in the hints section (they are in the main prompt)
     // The hints section is expected to be separate.
     // Our startup hints exclude "pause" and "quit".
-    expect(fullOutput).toContain("[P] to start");
-    expect(fullOutput).toContain("[Q] to quit");
+    expect(fullOutput).toContain("Press P to start");
+    expect(fullOutput).toContain("or Q to quit");
     
     // Simulate 'p' keypress to start and let the runner finish
     if (dataCallback) {

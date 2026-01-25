@@ -8,7 +8,7 @@ describe("Runtime KeybindHints", () => {
     const plainHints = hints.replace(/\x1b\[[0-9;]*m/g, "");
     
     expect(plainHints).toContain("Pause/Menu");
-    expect(plainHints).toContain("[P]");
+    expect(plainHints).toContain(" P ");
   });
 
   it("should include all keybinds for runtime", () => {

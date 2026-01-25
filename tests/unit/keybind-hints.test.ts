@@ -4,11 +4,11 @@ import { renderKeybindHints, getStartupKeybindHints } from "../../src/lib/keybin
 describe("KeybindHints", () => {
   it("should render default keybinds", () => {
     const hints = renderKeybindHints({ colors: false, unicode: false });
-    expect(hints).toContain("[Ctrl+C] Interrupt");
-    expect(hints).toContain("[T] Terminal");
-    expect(hints).toContain("[Ctrl+\\] Force Quit");
-    expect(hints).toContain("[P] Pause");
-    expect(hints).toContain("[Q] Quit");
+    expect(hints).toContain("Ctrl+C Interrupt");
+    expect(hints).toContain("T Terminal");
+    expect(hints).toContain("Ctrl+\\ Force Quit");
+    expect(hints).toContain("P Pause/Menu");
+    expect(hints).toContain("Q Quit");
   });
 
   it("should respect exclusion list", () => {
@@ -17,11 +17,11 @@ describe("KeybindHints", () => {
       colors: false, 
       unicode: false 
     });
-    expect(hints).toContain("[Ctrl+C] Interrupt");
-    expect(hints).toContain("[T] Terminal");
-    expect(hints).toContain("[Ctrl+\\] Force Quit");
-    expect(hints).not.toContain("[P] Pause");
-    expect(hints).not.toContain("[Q] Quit");
+    expect(hints).toContain("Ctrl+C Interrupt");
+    expect(hints).toContain("T Terminal");
+    expect(hints).toContain("Ctrl+\\ Force Quit");
+    expect(hints).not.toContain("P Pause/Menu");
+    expect(hints).not.toContain("Q Quit");
   });
 
   it("should return empty string if all keybinds are excluded", () => {
