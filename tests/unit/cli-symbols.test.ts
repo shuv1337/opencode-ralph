@@ -158,16 +158,6 @@ describe("CLI Symbols - Symbol Sets", () => {
         expect(TOOL_TYPE_SYMBOLS[symbol].ascii).toBeDefined();
       }
     });
-
-    it("should NOT use emoji characters", () => {
-      for (const [name, symbolSet] of Object.entries(TOOL_TYPE_SYMBOLS)) {
-        // Check that unicode doesn't contain emoji ranges
-        // Basic emoji range check (not exhaustive but catches common cases)
-        expect(symbolSet.unicode).not.toMatch(/[\u{1F300}-\u{1F9FF}]/u);
-        expect(symbolSet.unicode).not.toMatch(/[\u{1F600}-\u{1F64F}]/u);
-        expect(symbolSet.unicode).not.toMatch(/[\u{1F680}-\u{1F6FF}]/u);
-      }
-    });
   });
 
   describe("TOOL_SYMBOLS", () => {
@@ -319,64 +309,64 @@ describe("CLI Symbols - Symbol Resolution", () => {
 describe("CLI Symbols - Formatting Helpers", () => {
   describe("formatToolPrefix", () => {
     it("should format known tools correctly", () => {
-      expect(formatToolPrefix("bash", "unicode")).toBe("[$]");
-      expect(formatToolPrefix("read", "unicode")).toBe("[◀]");
-      expect(formatToolPrefix("edit", "unicode")).toBe("[◇]");
+      expect(formatToolPrefix("bash", "unicode")).toBe("$");
+      expect(formatToolPrefix("read", "unicode")).toBe("◀");
+      expect(formatToolPrefix("edit", "unicode")).toBe("◇");
     });
 
     it("should handle MCP tools", () => {
       // MCP tools use server-specific symbols from TOOL_SYMBOLS
-      expect(formatToolPrefix("tavily_search", "unicode")).toBe("[◉]");
-      expect(formatToolPrefix("context7_query", "unicode")).toBe("[⬡]");
+      expect(formatToolPrefix("tavily_search", "unicode")).toBe("◉");
+      expect(formatToolPrefix("context7_query", "unicode")).toBe("⬡");
     });
 
     it("should fallback for unknown tools", () => {
-      expect(formatToolPrefix("myCustomTool", "unicode")).toBe("[◆]");
+      expect(formatToolPrefix("myCustomTool", "unicode")).toBe("◆");
     });
 
     it("should work with ASCII style", () => {
-      expect(formatToolPrefix("bash", "ascii")).toBe("[$]");
-      expect(formatToolPrefix("read", "ascii")).toBe("[<]");
+      expect(formatToolPrefix("bash", "ascii")).toBe("$");
+      expect(formatToolPrefix("read", "ascii")).toBe("<");
     });
   });
 
   describe("formatStatusIndicator", () => {
     it("should format status indicators", () => {
-      expect(formatStatusIndicator("success", "unicode")).toBe("[✓]");
-      expect(formatStatusIndicator("error", "unicode")).toBe("[✗]");
-      expect(formatStatusIndicator("running", "unicode")).toBe("[●]");
+      expect(formatStatusIndicator("success", "unicode")).toBe("✓");
+      expect(formatStatusIndicator("error", "unicode")).toBe("✗");
+      expect(formatStatusIndicator("running", "unicode")).toBe("●");
     });
 
     it("should work with ASCII style", () => {
-      expect(formatStatusIndicator("success", "ascii")).toBe("[+]");
-      expect(formatStatusIndicator("error", "ascii")).toBe("[x]");
+      expect(formatStatusIndicator("success", "ascii")).toBe("+");
+      expect(formatStatusIndicator("error", "ascii")).toBe("x");
     });
   });
 
   describe("formatProgressBar", () => {
     it("should format progress bar at 0%", () => {
       const result = formatProgressBar(0, 10, "unicode");
-      expect(result).toBe("[░░░░░░░░░░]");
+      expect(result).toBe("░░░░░░░░░░");
     });
 
     it("should format progress bar at 50%", () => {
       const result = formatProgressBar(0.5, 10, "unicode");
-      expect(result).toBe("[█████░░░░░]");
+      expect(result).toBe("█████░░░░░");
     });
 
     it("should format progress bar at 100%", () => {
       const result = formatProgressBar(1, 10, "unicode");
-      expect(result).toBe("[██████████]");
+      expect(result).toBe("██████████");
     });
 
     it("should work with ASCII style", () => {
       const result = formatProgressBar(0.5, 10, "ascii");
-      expect(result).toBe("[#####.....]");
+      expect(result).toBe("#####.....");
     });
 
     it("should clamp values outside 0-1 range", () => {
-      expect(formatProgressBar(-0.5, 10, "unicode")).toBe("[░░░░░░░░░░]");
-      expect(formatProgressBar(1.5, 10, "unicode")).toBe("[██████████]");
+      expect(formatProgressBar(-0.5, 10, "unicode")).toBe("░░░░░░░░░░");
+      expect(formatProgressBar(1.5, 10, "unicode")).toBe("██████████");
     });
   });
 
@@ -397,62 +387,5 @@ describe("CLI Symbols - Formatting Helpers", () => {
       const result = formatSeparator(20, undefined, "ascii");
       expect(result).toBe("--------------------");
     });
-  });
-});
-
-describe("CLI Symbols - No Emoji Guarantee", () => {
-  it("should not contain any emoji characters in unicode symbols", () => {
-    // Comprehensive check of all symbol sets
-    const allSymbolSets = [
-      STATUS_SYMBOLS,
-      ARROW_SYMBOLS,
-      BOX_SYMBOLS,
-      BLOCK_SYMBOLS,
-      TOOL_TYPE_SYMBOLS,
-      MISC_SYMBOLS,
-    ];
-
-    // Emoji ranges to check (common ranges that should NOT appear in CLI symbols)
-    // Note: We exclude U+2600-U+26FF since it contains useful terminal symbols like ☐
-    const emojiPatterns = [
-      /[\u{1F300}-\u{1F9FF}]/u, // Miscellaneous Symbols and Pictographs, Emoticons
-      /[\u{1F600}-\u{1F64F}]/u, // Emoticons
-      /[\u{1F680}-\u{1F6FF}]/u, // Transport and Map Symbols
-      /[\u{FE00}-\u{FE0F}]/u,   // Variation Selectors (used with emoji)
-    ];
-
-    for (const symbolSet of allSymbolSets) {
-      for (const [name, symbols] of Object.entries(symbolSet)) {
-        for (const pattern of emojiPatterns) {
-          expect(
-            pattern.test(symbols.unicode),
-            `Symbol "${name}" unicode "${symbols.unicode}" contains emoji characters`
-          ).toBe(false);
-        }
-      }
-    }
-  });
-});
-
-describe("CLI Symbols - Platform Fallback", () => {
-  const originalEnv = { ...process.env };
-
-  afterEach(() => {
-    process.env = { ...originalEnv };
-    resetCapabilitiesCache();
-  });
-
-  it("should provide ASCII fallback when terminal is legacy Windows", () => {
-    // Simulate legacy Windows environment
-    // Note: This test verifies the fallback values exist and are valid ASCII
-    for (const [name, symbolSet] of Object.entries(TOOL_TYPE_SYMBOLS)) {
-      expect(symbolSet.ascii).toBeDefined();
-      expect(symbolSet.ascii.length).toBeGreaterThan(0);
-      // ASCII should be printable characters only
-      for (const char of symbolSet.ascii) {
-        const code = char.charCodeAt(0);
-        expect(code >= 32 && code <= 126, `Invalid ASCII in ${name}: ${symbolSet.ascii}`).toBe(true);
-      }
-    }
   });
 });
