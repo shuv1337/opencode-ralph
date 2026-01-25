@@ -450,8 +450,12 @@ export class HeadlessRunner {
     if (!reqResult.valid) {
       // Requirements not met: show error and only allow Q to quit
       const errorMsg = formatRequirementsError(reqResult);
-      write(this.withMargin(`\x1b[1;31m✗ ${errorMsg}\x1b[0m`) + "\n\n");
-      write(this.withMargin("\x1b[1;33m▶ Press [Q] to quit...\x1b[0m") + "\n\n");
+      const coloredBar = "\x1b[31m|\x1b[0m";
+      const dimmedLabel = "\x1b[2;37mERROR   \x1b[0m";
+      write(this.withMargin(`${coloredBar} ${dimmedLabel}\x1b[31m${errorMsg}\x1b[0m`) + "\n\n");
+      
+      const startLabel = "\x1b[2;37mQUIT    \x1b[0m";
+      write(this.withMargin(`${coloredBar} ${startLabel}\x1b[33mPress Q to quit...\x1b[0m`) + "\n\n");
       
       return new Promise<boolean>((resolve) => {
         const wasRaw = process.stdin.isRaw;
@@ -479,7 +483,9 @@ export class HeadlessRunner {
     }
     
     // Requirements met: show normal start prompt
-    write(this.withMargin("\x1b[1;36m▶ Press [P] to start or [Q] to quit...\x1b[0m") + "\n\n");
+    const coloredBar = "\x1b[36m|\x1b[0m";
+    const dimmedLabel = "\x1b[2;37mSTART   \x1b[0m";
+    write(this.withMargin(`${coloredBar} ${dimmedLabel}\x1b[36mPress P to start or Q to quit...\x1b[0m`) + "\n\n");
 
     write(this.withMargin("\x1b[2m(Tip: You can scroll up in your terminal to see previous output)\x1b[0m") + "\n\n");
 
@@ -509,7 +515,9 @@ export class HeadlessRunner {
         // Handle start keys: p, P, Enter, Space
         if (key === "p" || key === "\r" || key === "\n" || key === " ") {
           cleanup();
-          write(this.withMargin("\x1b[1;32m▶ Starting...\x1b[0m") + "\n\n");
+          const readyBar = "\x1b[32m|\x1b[0m";
+          const readyLabel = "\x1b[2;37mREADY   \x1b[0m";
+          write(this.withMargin(`${readyBar} ${readyLabel}\x1b[32mStarting...\x1b[0m`) + "\n\n");
           resolve(true);
           return;
         }
@@ -759,7 +767,9 @@ export class HeadlessRunner {
     this.emitEvent({ type: "pause" });
 
     const write = this.config.write ?? ((text: string) => process.stdout.write(text));
-    write("\n" + this.withMargin("\x1b[1;33m⏸ Session paused.\x1b[0m Press [R] to resume.") + "\n\n");
+    const coloredBar = "\x1b[33m|\x1b[0m";
+    const dimmedLabel = "\x1b[2;37mPAUSE   \x1b[0m";
+    write("\n" + this.withMargin(`${coloredBar} ${dimmedLabel}\x1b[33mSession paused.\x1b[0m Press R to resume.`) + "\n\n");
   }
 
   /**
@@ -791,7 +801,9 @@ export class HeadlessRunner {
     this.spinner?.resume();
 
     const write = this.config.write ?? ((text: string) => process.stdout.write(text));
-    write("\n" + this.withMargin("\x1b[1;32m▶ Session resumed.\x1b[0m") + "\n\n");
+    const coloredBar = "\x1b[32m|\x1b[0m";
+    const dimmedLabel = "\x1b[2;37mRESUME  \x1b[0m";
+    write("\n" + this.withMargin(`${coloredBar} ${dimmedLabel}\x1b[32mSession resumed.\x1b[0m`) + "\n\n");
   }
 
   /**
