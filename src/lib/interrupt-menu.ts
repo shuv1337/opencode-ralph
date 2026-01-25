@@ -159,6 +159,7 @@ export function createInterruptMenu(
    */
   function buildMenuDisplay(): string {
     const lines: string[] = [];
+    const margin = "  "; // Standard margin
     
     // Clear line and show prompt
     const warningSymbol = getWarningSymbol();
@@ -168,21 +169,21 @@ export function createInterruptMenu(
     );
     
     lines.push(`${ANSI.cursorToStart}${ANSI.clearLine}`);
-    lines.push(`${prompt} ${promptMessage}`);
+    lines.push(`${margin}${prompt} ${promptMessage}`);
     lines.push("");
     
     // Menu options
     const quitLabel = applyColor("[Q]", ANSI.red + ANSI.bold);
     const quitDesc = applyColor("Force Quit", ANSI.red);
-    lines.push(`    ${quitLabel} ${quitDesc} - Exit immediately`);
+    lines.push(`${margin}    ${quitLabel} ${quitDesc} - Exit immediately`);
     
     const pauseLabel = applyColor("[P]", ANSI.yellow + ANSI.bold);
     const pauseDesc = applyColor("Pause", ANSI.yellow);
-    lines.push(`    ${pauseLabel} ${pauseDesc} - Pause the session`);
+    lines.push(`${margin}    ${pauseLabel} ${pauseDesc} - Pause the session`);
     
     const resumeLabel = applyColor("[R]", ANSI.green + ANSI.bold);
     const resumeDesc = applyColor("Resume", ANSI.green);
-    lines.push(`    ${resumeLabel} ${resumeDesc} - Continue execution`);
+    lines.push(`${margin}    ${resumeLabel} ${resumeDesc} - Continue execution`);
     
     lines.push("");
     

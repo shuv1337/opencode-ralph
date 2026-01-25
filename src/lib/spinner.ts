@@ -48,6 +48,8 @@ export interface SpinnerOptions {
   write?: (text: string) => void;
   /** Whether to hide cursor during animation */
   hideCursor?: boolean;
+  /** Left margin (number of spaces) */
+  margin?: number;
 }
 
 /**
@@ -154,6 +156,7 @@ export function createSpinner(options: SpinnerOptions = {}): SpinnerController {
   const interval = options.interval ?? 100;
   let text = options.text ?? "Looping...";
   const hideCursor = options.hideCursor ?? true;
+  const marginStr = " ".repeat(options.margin ?? 2);
   
   // Determine color based on terminal capabilities
   let colorCode = options.color ?? ANSI.dimCyan;
@@ -183,7 +186,7 @@ export function createSpinner(options: SpinnerOptions = {}): SpinnerController {
 
     // Build the spinner line
     const spinnerChar = colorCode ? `${colorCode}${frame}${ANSI.reset}` : frame;
-    const line = `${ANSI.cursorToStart}${ANSI.clearLine}${spinnerChar} ${text}`;
+    const line = `${ANSI.cursorToStart}${ANSI.clearLine}${marginStr}${spinnerChar} ${text}`;
     
     write(line);
   };
@@ -206,8 +209,8 @@ export function createSpinner(options: SpinnerOptions = {}): SpinnerController {
       if (!canAnimate()) {
         // Fallback to static message
         const fallbackText = caps.supportsColor
-          ? `${ANSI.dimCyan}...${ANSI.reset} ${text}`
-          : `... ${text}`;
+          ? `${marginStr}${ANSI.dimCyan}...${ANSI.reset} ${text}`
+          : `${marginStr}... ${text}`;
         write(fallbackText + "\n");
         return;
       }

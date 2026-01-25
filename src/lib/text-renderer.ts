@@ -136,6 +136,11 @@ export interface TextRendererOptions {
   width?: number;
   asciiSymbols?: AsciiSymbolOverrides;
   /** 
+   * Left margin (number of spaces)
+   * @default 2
+   */
+  leftMargin?: number;
+  /** 
    * If true, use at least 'ascii' mode even for non-TTY output.
    * This is useful for headless mode where we want formatted output
    * regardless of whether stdout is a TTY.
@@ -158,6 +163,8 @@ export interface TextRenderer {
   renderFooter(stats: SessionStats): string;
   renderLogEntry(entry: LogEntry): string;
   getMode(): TextRenderMode;
+  /** Get the configured left margin string */
+  getMargin(): string;
 }
 
 // ============================================================================
@@ -233,6 +240,8 @@ export const TOOL_TEXT_MAP: Record<string, string> = {
   brave: "[BRAVE]",
   custom: "[TOOL]",
   skill: "[SKILL]",
+  success: "[OK]",
+  info: "[INFO]",
 };
 
 /**
@@ -264,6 +273,8 @@ export const TOOL_UNICODE_MAP: Record<string, string> = {
   brave: "[◉]",
   custom: "[◆]",
   skill: "[★]",
+  success: "[✓]",
+  info: "[i]",
 };
 
 // ============================================================================
@@ -605,6 +616,16 @@ export function createTextRenderer(options?: TextRendererOptions): TextRenderer 
   const mode = options?.mode ?? detectRenderMode(forceMinimumAscii);
   const useColors = options?.colors ?? !shouldDisableColors();
   const width = options?.width ?? 60;
+  const margin = " ".repeat(options?.leftMargin ?? 2);
+
+  // Helper to apply margin to all lines of a string
+  function applyMargin(text: string): string {
+    if (!text) return "";
+    return text
+      .split("\n")
+      .map((line) => (line.length > 0 ? margin + line : line))
+      .join("\n");
+  }
 
   // ASCII symbol overrides
   const symbols = {
@@ -674,7 +695,8 @@ export function createTextRenderer(options?: TextRendererOptions): TextRenderer 
     }
 
     const text = STATUS_TEXT_MAP[status];
-    return useColors ? colorize(text, color, { mode }) : text;
+    const result = useColors ? colorize(text, color, { mode }) : text;
+    return result;
   }
 
   function renderTaskStatus(status: TaskStatus): string {
@@ -847,6 +869,10 @@ export function createTextRenderer(options?: TextRendererOptions): TextRenderer 
     return mode;
   }
 
+  function getMargin(): string {
+    return margin;
+  }
+
   return {
     renderToolIcon,
     renderStatus,
@@ -859,6 +885,7 @@ export function createTextRenderer(options?: TextRendererOptions): TextRenderer 
     renderFooter,
     renderLogEntry,
     getMode,
+    getMargin,
   };
 }
 
