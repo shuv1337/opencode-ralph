@@ -184,11 +184,20 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
 
   const emit = (event: HeadlessEvent): void => {
     let line = "";
+    const margin = renderer.getMargin();
     
+    // Helper to apply margin to multi-line strings
+    const withMargin = (text: string) => {
+      if (!text) return "";
+      return text.split("\n")
+        .map(l => l.length > 0 ? margin + l : l)
+        .join("\n");
+    };
+
     switch (event.type) {
       case "start":
-        line = renderer.renderHeader("RALPH - AI Coding Agent");
-        break;
+        // Skip renderer.renderHeader as the ASCII banner is already shown by the runner
+        return;
         
       case "iteration_start":
         line = "\n" + renderer.renderSeparator(`Iteration ${event.iteration}`);
@@ -374,10 +383,18 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
 
     if (!line) return;
 
-    write(lineWithTimestamp(event, line) + "\n");
+    write(withMargin(lineWithTimestamp(event, line)) + "\n");
   };
 
   const finalize = (summary: HeadlessSummary): void => {
+    const margin = renderer.getMargin();
+    const withMargin = (text: string) => {
+      if (!text) return "";
+      return text.split("\n")
+        .map(l => l.length > 0 ? margin + l : l)
+        .join("\n");
+    };
+    
     // Convert HeadlessSummary to SessionStats format
     const stats: SessionStats = {
       iterations: 0, // Not tracked in summary
@@ -391,7 +408,7 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
     };
     
     const footer = renderer.renderFooter(stats);
-    write(footer + "\n");
+    write(withMargin(footer) + "\n");
     
     // Display accumulated token usage in the footer (consolidated, not per-line)
     const hasTokens = accumulatedTokens.input > 0 || accumulatedTokens.output > 0;
@@ -401,13 +418,13 @@ export function createTextFormatter(options: TextFormatterOptions): HeadlessForm
         "textMuted",
         { mode }
       );
-      write(tokenLine + "\n");
+      write(withMargin(tokenLine) + "\n");
     }
     
     // Display model info if captured (shown once in footer, not per-line)
     if (lastModel) {
       const modelLine = colorize(`Model: ${lastModel}`, "textMuted", { mode });
-      write(modelLine + "\n");
+      write(withMargin(modelLine) + "\n");
     }
   };
 

@@ -65,6 +65,8 @@ export type HeadlessOutput = {
   finalize: (exitCode: HeadlessExitCode) => void;
   getStats: () => Readonly<HeadlessStats>;
   getTextRenderer: () => TextRenderer;
+  /** Get the configured left margin string */
+  getMargin: () => string;
 };
 
 /**
@@ -250,7 +252,12 @@ export function createHeadlessOutput(options: HeadlessOutputCreateOptions): Head
       });
       if (bannerText) {
         const write = options.write ?? ((text: string) => process.stdout.write(text));
-        write(bannerText + "\n\n");
+        const margin = textRenderer.getMargin();
+        const formattedBanner = bannerText
+          .split("\n")
+          .map(line => line.length > 0 ? margin + line : line)
+          .join("\n");
+        write(formattedBanner + "\n\n");
       }
     },
     finalize: (exitCode) => {
@@ -267,5 +274,6 @@ export function createHeadlessOutput(options: HeadlessOutputCreateOptions): Head
     },
     getStats: () => stats as Readonly<HeadlessStats>,
     getTextRenderer: () => textRenderer,
+    getMargin: () => textRenderer.getMargin(),
   };
 }

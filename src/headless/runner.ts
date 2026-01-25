@@ -45,6 +45,10 @@ import {
   type InterruptMenuController,
 } from "../lib/interrupt-menu";
 import {
+  getStartupKeybindHints,
+  getRuntimeKeybindHints,
+} from "../lib/keybind-hints";
+import {
   validateRequirements,
   formatRequirementsError,
 } from "../lib/requirements";
@@ -446,8 +450,8 @@ export class HeadlessRunner {
     if (!reqResult.valid) {
       // Requirements not met: show error and only allow Q to quit
       const errorMsg = formatRequirementsError(reqResult);
-      write(`\n\x1b[1;31m✗ ${errorMsg}\x1b[0m\n\n`);
-      write("\x1b[1;33m▶ Press [Q] to quit...\x1b[0m\n\n");
+      write(this.withMargin(`\x1b[1;31m✗ ${errorMsg}\x1b[0m`) + "\n\n");
+      write(this.withMargin("\x1b[1;33m▶ Press [Q] to quit...\x1b[0m") + "\n\n");
       
       return new Promise<boolean>((resolve) => {
         const wasRaw = process.stdin.isRaw;
@@ -475,8 +479,9 @@ export class HeadlessRunner {
     }
     
     // Requirements met: show normal start prompt
-    write("\n\x1b[1;36m▶ Press [P] to start or [Q] to quit...\x1b[0m\n\n");
-    write("\x1b[2m(Tip: You can scroll up in your terminal to see previous output)\x1b[0m\n\n");
+    write(this.withMargin("\x1b[1;36m▶ Press [P] to start or [Q] to quit...\x1b[0m") + "\n\n");
+
+    write(this.withMargin("\x1b[2m(Tip: You can scroll up in your terminal to see previous output)\x1b[0m") + "\n\n");
 
     return new Promise<boolean>((resolve) => {
       // Save original raw mode state
@@ -504,7 +509,7 @@ export class HeadlessRunner {
         // Handle start keys: p, P, Enter, Space
         if (key === "p" || key === "\r" || key === "\n" || key === " ") {
           cleanup();
-          write("\x1b[1;32m▶ Starting...\x1b[0m\n\n");
+          write(this.withMargin("\x1b[1;32m▶ Starting...\x1b[0m") + "\n\n");
           resolve(true);
           return;
         }
@@ -636,10 +641,12 @@ export class HeadlessRunner {
    * Shows animated spinner when processing is active.
    */
   private setupSpinner(): void {
+    const margin = this.output?.getMargin().length ?? 2;
     this.spinner = createSpinner({
       write: this.config.write,
       text: "Looping...",
       hideCursor: true,
+      margin,
     });
     log("headless", "Spinner initialized");
   }
@@ -752,7 +759,7 @@ export class HeadlessRunner {
     this.emitEvent({ type: "pause" });
 
     const write = this.config.write ?? ((text: string) => process.stdout.write(text));
-    write("\n\x1b[1;33m⏸ Session paused.\x1b[0m Press [R] to resume.\n\n");
+    write("\n" + this.withMargin("\x1b[1;33m⏸ Session paused.\x1b[0m Press [R] to resume.") + "\n\n");
   }
 
   /**
@@ -784,7 +791,7 @@ export class HeadlessRunner {
     this.spinner?.resume();
 
     const write = this.config.write ?? ((text: string) => process.stdout.write(text));
-    write("\n\x1b[1;32m▶ Session resumed.\x1b[0m\n\n");
+    write("\n" + this.withMargin("\x1b[1;32m▶ Session resumed.\x1b[0m") + "\n\n");
   }
 
   /**
@@ -833,15 +840,26 @@ export class HeadlessRunner {
       const result = await launchTerminal(terminal, cmd);
       if (result.success) {
         log("headless", "Opened terminal with session", { terminal: terminal.name });
-        write(`[✓] Opened ${terminal.name} with session\n`);
+        this.emitEvent({
+          type: "tool",
+          iteration: this.state.iteration,
+          name: "success",
+          title: `Opened ${terminal.name} with session`,
+        });
       } else {
         log("headless", "Failed to open terminal", { error: result.error });
-        write(`[!] Failed to open terminal: ${result.error}\n`);
+        this.emitEvent({
+          type: "error",
+          message: `Failed to open terminal: ${result.error}`,
+        });
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       log("headless", "Terminal launch error", { error: errorMsg });
-      write(`[!] Terminal launch error: ${errorMsg}\n`);
+      this.emitEvent({
+        type: "error",
+        message: `Terminal launch error: ${errorMsg}`,
+      });
     }
   }
 
@@ -1108,12 +1126,36 @@ export class HeadlessRunner {
   }
 
   /**
+   * Apply margin to text for direct writes.
+   */
+  private withMargin(text: string): string {
+    const margin = this.output?.getMargin() ?? "  ";
+    if (!text) return "";
+    return text.split("\n")
+      .map(l => l.length > 0 ? margin + l : l)
+      .join("\n");
+  }
+
+  /**
    * Clear the terminal buffer if interactive (Phase 2, Task 4).
    * Re-shows the ASCII banner after clearing (Phase 2, Task 5).
+   * Includes runtime keybind hints (Phase 3, Task 3).
    */
   private clearBuffer(): void {
     this.terminalService.clearBuffer(true);
+    // Add top margin (Phase 3, Task 4)
+    const write = this.config.write ?? ((text: string) => process.stdout.write(text));
+    write("\n");
+    
     this.output?.showBanner();
+
+    // Show runtime keybind hints (Phase 3, Task 3)
+    if (process.stdin.isTTY) {
+      const hints = getRuntimeKeybindHints();
+      if (hints) {
+        write(this.withMargin(`\x1b[2m${hints}\x1b[0m`) + "\n\n");
+      }
+    }
   }
 
   /**
