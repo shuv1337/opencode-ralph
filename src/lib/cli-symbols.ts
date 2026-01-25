@@ -139,9 +139,9 @@ export const TOOL_TYPE_SYMBOLS: Record<string, SymbolSet> = {
   grep: { unicode: "/", ascii: "/" }, // Search content
 
   // Task/planning
-  task: { unicode: "▣", ascii: "[#]" }, // Task indicator (filled square)
-  taskDone: { unicode: "☑", ascii: "[x]" }, // Checked task
-  todo: { unicode: "▣", ascii: "[#]" }, // Todo item
+  task: { unicode: "▣", ascii: "#" }, // Task indicator (filled square)
+  taskDone: { unicode: "☑", ascii: "x" }, // Checked task
+  todo: { unicode: "▣", ascii: "#" }, // Todo item
 
   // Thinking/reasoning
   think: { unicode: "◈", ascii: "..." }, // Thinking/reasoning
@@ -297,31 +297,31 @@ export function formatToolPrefix(toolName: string, style?: SymbolStyle): string 
     // First check TOOL_SYMBOLS for server-specific symbols
     const toolSymbol = TOOL_SYMBOLS[serverName];
     if (toolSymbol) {
-      return `[${getSymbol(toolSymbol, style)}]`;
+      return `${getSymbol(toolSymbol, style)}`;
     }
     // Then check TOOL_TYPE_SYMBOLS
     const serverSymbol = TOOL_TYPE_SYMBOLS[serverName];
     if (serverSymbol) {
-      return `[${getSymbol(serverSymbol, style)}]`;
+      return `${getSymbol(serverSymbol, style)}`;
     }
     // Fall back to MCP symbol for unknown servers
-    return `[${getSymbol(TOOL_TYPE_SYMBOLS.mcp, style)}]`;
+    return `${getSymbol(TOOL_TYPE_SYMBOLS.mcp, style)}`;
   }
 
   // Direct tool lookup - first check TOOL_SYMBOLS
   const toolSymbol = TOOL_SYMBOLS[normalized];
   if (toolSymbol) {
-    return `[${getSymbol(toolSymbol, style)}]`;
+    return `${getSymbol(toolSymbol, style)}`;
   }
 
   // Then check TOOL_TYPE_SYMBOLS
   const symbolSet = TOOL_TYPE_SYMBOLS[normalized];
   if (symbolSet) {
-    return `[${getSymbol(symbolSet, style)}]`;
+    return `${getSymbol(symbolSet, style)}`;
   }
 
   // Fallback to generic tool symbol
-  return `[${getSymbol(TOOL_TYPE_SYMBOLS.tool, style)}]`;
+  return `${getSymbol(TOOL_TYPE_SYMBOLS.tool, style)}`;
 }
 
 /**
@@ -329,13 +329,13 @@ export function formatToolPrefix(toolName: string, style?: SymbolStyle): string 
  *
  * @param status - Status type
  * @param style - Optional symbol style override
- * @returns Formatted status string like "[✓]" or "[+]"
+ * @returns Formatted status string like "✓" or "+"
  */
 export function formatStatusIndicator(
   status: keyof typeof STATUS_SYMBOLS,
   style?: SymbolStyle
 ): string {
-  return `[${getStatusSymbol(status, style)}]`;
+  return `${getStatusSymbol(status, style)}`;
 }
 
 /**
@@ -344,7 +344,7 @@ export function formatStatusIndicator(
  * @param progress - Progress value 0-1
  * @param width - Width of the progress bar in characters
  * @param style - Optional symbol style override
- * @returns Progress bar string like "[████░░░░░░]"
+ * @returns Progress bar string like "████░░░░░░"
  */
 export function formatProgressBar(
   progress: number,
@@ -358,7 +358,7 @@ export function formatProgressBar(
   const fillChar = getSymbol(BLOCK_SYMBOLS.full, style);
   const emptyChar = getSymbol(BLOCK_SYMBOLS.light, style);
 
-  return `[${fillChar.repeat(filledCount)}${emptyChar.repeat(emptyCount)}]`;
+  return `${fillChar.repeat(filledCount)}${emptyChar.repeat(emptyCount)}`;
 }
 
 /**
