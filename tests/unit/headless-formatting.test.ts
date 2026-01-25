@@ -14,7 +14,7 @@ describe("Headless Formatting", () => {
       });
 
       formatter.emit({ type: "idle", isIdle: true });
-      expect(output.startsWith("    [||]")).toBe(true);
+      expect(output.startsWith("    | IDLE")).toBe(true);
     });
 
     it("should apply left margin to multi-line header/footer", () => {

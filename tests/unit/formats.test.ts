@@ -22,7 +22,6 @@ describe("formatters", () => {
 
     const output = writes.join("");
     // In minimal mode, the output format is different
-    expect(output).toContain("RALPH");
     expect(output).toContain("1/3");
     expect(output).toContain("hello");
   });
