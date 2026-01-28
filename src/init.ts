@@ -4,6 +4,7 @@ import { parsePrdItems, type PrdItem } from "./plan";
 import { PLUGIN_TEMPLATE } from "./templates/plugin-template";
 import { AGENTS_TEMPLATE } from "./templates/agents-template";
 import { isRedundantTask } from "./lib/task-deduplication";
+import type { TaskStatus } from "./types/task-status";
 
 // Re-export for backwards compatibility
 export {
@@ -62,6 +63,10 @@ export type InitResult = {
   skipped: string[];
   warnings: string[];
   gitignoreAppended?: boolean;
+  /** Files that were normalized (format fixed) */
+  normalized?: string[];
+  /** Number of items normalized in the PRD */
+  normalizedItemCount?: number;
 };
 
 /**
@@ -167,6 +172,136 @@ export function parsePrdMetadata(content: string): ExtendedPrdMetadata | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize a PRD item to ensure it has a `passes` field.
+ * Derives `passes` from `status` if missing:
+ * - status: "done" → passes: true
+ * - any other status or missing → passes: false
+ */
+function normalizeItem(item: Record<string, unknown>): Record<string, unknown> {
+  // If passes is already a boolean, return as-is
+  if (typeof item.passes === "boolean") {
+    return item;
+  }
+
+  // Derive passes from status
+  const status = item.status as string | undefined;
+  const passes = status === "done";
+
+  return { ...item, passes };
+}
+
+/**
+ * Normalize items array to ensure all items have required fields.
+ * Returns the normalized items array.
+ */
+function normalizeItems(items: unknown[]): unknown[] {
+  return items.map((item) => {
+    if (item && typeof item === "object") {
+      return normalizeItem(item as Record<string, unknown>);
+    }
+    return item;
+  });
+}
+
+/**
+ * Result of PRD normalization.
+ */
+export type NormalizePrdResult = {
+  /** Whether the file was modified */
+  modified: boolean;
+  /** Number of items that were normalized */
+  normalizedCount: number;
+  /** Warning messages */
+  warnings: string[];
+};
+
+/**
+ * Normalize an existing prd.json file to ensure all items have required fields.
+ * This is called during `ralph init` when prd.json already exists.
+ * 
+ * Fixes:
+ * - Items missing `passes` field (derived from `status`)
+ * - Items with `status: "done"` but no `passes` → adds `passes: true`
+ * - Items with other/no status but no `passes` → adds `passes: false`
+ * 
+ * @param prdPath - Path to the prd.json file
+ * @returns NormalizePrdResult with modification status
+ */
+export async function normalizePrdFile(prdPath: string): Promise<NormalizePrdResult> {
+  const result: NormalizePrdResult = {
+    modified: false,
+    normalizedCount: 0,
+    warnings: [],
+  };
+
+  const file = Bun.file(prdPath);
+  if (!(await file.exists())) {
+    return result;
+  }
+
+  const content = await file.text();
+  const trimmed = content.trim();
+
+  // Only process JSON files
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return result;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    result.warnings.push("Failed to parse prd.json - invalid JSON syntax.");
+    return result;
+  }
+
+  // Get items array from parsed content
+  let items: unknown[] | null = null;
+  let isArrayFormat = false;
+
+  if (Array.isArray(parsed)) {
+    items = parsed;
+    isArrayFormat = true;
+  } else if (parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown }).items)) {
+    items = (parsed as { items: unknown[] }).items;
+  }
+
+  if (!items || items.length === 0) {
+    return result;
+  }
+
+  // Count items that need normalization (missing passes field)
+  const itemsNeedingFix = items.filter((item) => {
+    if (!item || typeof item !== "object") return false;
+    const candidate = item as Record<string, unknown>;
+    return typeof candidate.passes !== "boolean";
+  });
+
+  if (itemsNeedingFix.length === 0) {
+    // All items already have passes field
+    return result;
+  }
+
+  // Normalize items
+  const normalizedItems = normalizeItems(items);
+  result.normalizedCount = itemsNeedingFix.length;
+  result.modified = true;
+
+  // Reconstruct the JSON with normalized items
+  let output: unknown;
+  if (isArrayFormat) {
+    output = normalizedItems;
+  } else {
+    output = { ...(parsed as object), items: normalizedItems };
+  }
+
+  // Write back the normalized file
+  await Bun.write(prdPath, JSON.stringify(output, null, 2) + "\n");
+
+  return result;
 }
 
 /**
@@ -468,38 +603,70 @@ export async function runInit(options: InitOptions): Promise<InitResult> {
   const looksLikeJson = trimmedSource.startsWith("{") || trimmedSource.startsWith("[");
   const parsedItems = sourceText ? parsePrdItems(sourceText) : null;
   let prdItems: PrdItem[] = [];
+  
+  // Check if target prd.json already exists and might need normalization
+  const targetPrdExists = await Bun.file(resolvedPlan.planFile).exists();
+  const targetIsSource = sourcePath === resolvedPlan.planFile || sourcePath === options.planFile;
 
-  if (parsedItems) {
-    prdItems = parsedItems;
-  } else if (sourceText) {
-    const tasks = extractTasksFromText(sourceText);
-    if (tasks.length > 0) {
-      prdItems = createPrdItemsFromTasks(tasks);
-    } else {
-      prdItems = createTemplateItems();
-      if (looksLikeJson) {
-        result.warnings.push("Invalid PRD JSON detected. Creating a template PRD instead.");
-      } else {
-        result.warnings.push("Unable to extract tasks from the source plan. Creating a template PRD instead.");
+  // If target prd.json exists and is the source, and parsing failed,
+  // try to normalize it (fix missing fields like 'passes')
+  if (targetPrdExists && targetIsSource && !parsedItems && looksLikeJson && !options.force) {
+    const normalizeResult = await normalizePrdFile(resolvedPlan.planFile);
+    if (normalizeResult.modified) {
+      result.normalized = result.normalized || [];
+      result.normalized.push(resolvedPlan.planFile);
+      result.normalizedItemCount = normalizeResult.normalizedCount;
+      // Re-read the normalized content
+      const normalizedContent = await Bun.file(resolvedPlan.planFile).text();
+      const normalizedItems = parsePrdItems(normalizedContent);
+      if (normalizedItems) {
+        prdItems = normalizedItems;
       }
     }
-  } else {
-    prdItems = createTemplateItems();
+    if (normalizeResult.warnings.length > 0) {
+      result.warnings.push(...normalizeResult.warnings);
+    }
   }
 
-  // Wrap PRD items with metadata to mark as generated
-  const generatedPrd: GeneratedPrd = {
-    metadata: {
-      generated: true,
-      generator: "ralph-init",
-      createdAt: new Date().toISOString(),
-      sourceFile: sourcePath ?? undefined,
-    },
-    items: prdItems,
-  };
-  const planContent = JSON.stringify(generatedPrd, null, 2) + "\n";
+  // Standard parsing logic if we don't have prdItems yet
+  if (prdItems.length === 0) {
+    if (parsedItems) {
+      prdItems = parsedItems;
+    } else if (sourceText) {
+      const tasks = extractTasksFromText(sourceText);
+      if (tasks.length > 0) {
+        prdItems = createPrdItemsFromTasks(tasks);
+      } else {
+        prdItems = createTemplateItems();
+        if (looksLikeJson) {
+          result.warnings.push("Invalid PRD JSON detected. Creating a template PRD instead.");
+        } else {
+          result.warnings.push("Unable to extract tasks from the source plan. Creating a template PRD instead.");
+        }
+      }
+    } else {
+      prdItems = createTemplateItems();
+    }
+  }
 
-  await writeFileIfNeeded(resolvedPlan.planFile, planContent, Boolean(options.force), result);
+  // If we already normalized the file, skip creating a new one
+  const alreadyNormalized = result.normalized?.includes(resolvedPlan.planFile);
+  
+  if (!alreadyNormalized) {
+    // Wrap PRD items with metadata to mark as generated
+    const generatedPrd: GeneratedPrd = {
+      metadata: {
+        generated: true,
+        generator: "ralph-init",
+        createdAt: new Date().toISOString(),
+        sourceFile: sourcePath ?? undefined,
+      },
+      items: prdItems,
+    };
+    const planContent = JSON.stringify(generatedPrd, null, 2) + "\n";
+
+    await writeFileIfNeeded(resolvedPlan.planFile, planContent, Boolean(options.force), result);
+  }
   await writeFileIfNeeded(
     options.progressFile,
     buildProgressTemplate(resolvedPlan.planFile),
