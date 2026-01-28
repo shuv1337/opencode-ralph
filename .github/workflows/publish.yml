@@ -156,8 +156,8 @@ jobs:
               # tar.gz archive
               tar -czf "release-assets/${pkg}-${version}.tar.gz" -C "$dir" bin/ralph.exe
               
-              # zip archive
-              (cd "$dir" && zip -j "../release-assets/${pkg}-${version}.zip" bin/ralph.exe)
+              # zip archive (use absolute path to avoid relative path issues)
+              zip -j "release-assets/${pkg}-${version}.zip" "$dir/bin/ralph.exe"
               
               # Standalone exe for direct download
               cp "$dir/bin/ralph.exe" "release-assets/ralph-${platform}-${arch}-${version}.exe"
