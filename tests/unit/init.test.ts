@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress, isGeneratedPlugin, isGeneratedAgents, GENERATED_PROMPT_MARKER, GENERATED_PLUGIN_MARKER, GENERATED_AGENTS_MARKER, GITIGNORE_ENTRIES, GITIGNORE_HEADER, buildGitignoreBlock } from "../../src/init";
+import { runInit, isGeneratedPrd, isGeneratedPrompt, isGeneratedProgress, isGeneratedPlugin, isGeneratedAgents, GENERATED_PROMPT_MARKER, GENERATED_PLUGIN_MARKER, GENERATED_AGENTS_MARKER, GITIGNORE_ENTRIES, GITIGNORE_HEADER, buildGitignoreBlock, normalizePrdFile } from "../../src/init";
 import { TempDir } from "../helpers/temp-files";
 
 describe("runInit", () => {
@@ -708,9 +708,230 @@ describe("isGeneratedAgents", () => {
   });
 
   it("should return false for custom AGENTS.md", () => {
-    const content = `# AGENTS.md - My Custom Configuration
-
+    const content = `# AGENTS.md - My Custom Configuration\r
+\r
 This is my custom configuration file.`;
     expect(isGeneratedAgents(content)).toBe(false);
+  });
+});
+
+describe("normalizePrdFile", () => {
+  const tempDir = new TempDir();
+
+  beforeEach(async () => {
+    await tempDir.create();
+  });
+
+  afterEach(async () => {
+    await tempDir.cleanup();
+  });
+
+  it("should add passes field to items with status only", async () => {
+    const prdContent = {
+      metadata: { generated: true, generator: "external-tool" },
+      items: [
+        { id: "1", description: "Pending task", status: "pending" },
+        { id: "2", description: "Done task", status: "done" },
+        { id: "3", description: "Active task", status: "active" },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    const result = await normalizePrdFile(prdPath);
+
+    expect(result.modified).toBe(true);
+    expect(result.normalizedCount).toBe(3);
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    expect(normalizedContent.items[0].passes).toBe(false); // pending -> false
+    expect(normalizedContent.items[1].passes).toBe(true);  // done -> true
+    expect(normalizedContent.items[2].passes).toBe(false); // active -> false
+  });
+
+  it("should preserve existing passes field", async () => {
+    const prdContent = {
+      metadata: { generated: true, generator: "ralph-init" },
+      items: [
+        { id: "1", description: "Completed task", passes: true, status: "done" },
+        { id: "2", description: "Incomplete task", passes: false },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    const result = await normalizePrdFile(prdPath);
+
+    expect(result.modified).toBe(false);
+    expect(result.normalizedCount).toBe(0);
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    expect(normalizedContent.items[0].passes).toBe(true);
+    expect(normalizedContent.items[1].passes).toBe(false);
+  });
+
+  it("should handle array format prd.json", async () => {
+    const prdContent = [
+      { description: "Task without passes", status: "pending" },
+      { description: "Task with passes", passes: true },
+    ];
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    const result = await normalizePrdFile(prdPath);
+
+    expect(result.modified).toBe(true);
+    expect(result.normalizedCount).toBe(1);
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    expect(normalizedContent[0].passes).toBe(false);
+    expect(normalizedContent[1].passes).toBe(true);
+  });
+
+  it("should return not modified for non-existent file", async () => {
+    const result = await normalizePrdFile(tempDir.path("nonexistent.json"));
+
+    expect(result.modified).toBe(false);
+    expect(result.normalizedCount).toBe(0);
+  });
+
+  it("should return warning for invalid JSON", async () => {
+    const prdPath = await tempDir.write("prd.json", "{ invalid json }");
+
+    const result = await normalizePrdFile(prdPath);
+
+    expect(result.modified).toBe(false);
+    expect(result.warnings.length).toBe(1);
+    expect(result.warnings[0]).toContain("invalid JSON");
+  });
+
+  it("should default to passes: false when no status provided", async () => {
+    const prdContent = {
+      items: [
+        { description: "Task with no status or passes" },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    const result = await normalizePrdFile(prdPath);
+
+    expect(result.modified).toBe(true);
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    expect(normalizedContent.items[0].passes).toBe(false);
+  });
+
+  it("should preserve all other fields during normalization", async () => {
+    const prdContent = {
+      metadata: { 
+        generated: true, 
+        generator: "architect-agent",
+        title: "Test PRD",
+        summary: "Test summary"
+      },
+      items: [
+        { 
+          id: "1.1.1", 
+          category: "setup", 
+          description: "Task with all fields",
+          steps: ["Step 1", "Step 2"],
+          effort: "M",
+          risk: "L",
+          status: "done"
+        },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    await normalizePrdFile(prdPath);
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    
+    // Verify metadata is preserved
+    expect(normalizedContent.metadata.generator).toBe("architect-agent");
+    expect(normalizedContent.metadata.title).toBe("Test PRD");
+    
+    // Verify item fields are preserved
+    const item = normalizedContent.items[0];
+    expect(item.id).toBe("1.1.1");
+    expect(item.category).toBe("setup");
+    expect(item.steps).toEqual(["Step 1", "Step 2"]);
+    expect(item.effort).toBe("M");
+    expect(item.risk).toBe("L");
+    expect(item.status).toBe("done");
+    expect(item.passes).toBe(true); // Added by normalization
+  });
+});
+
+describe("runInit with normalization", () => {
+  const tempDir = new TempDir();
+
+  beforeEach(async () => {
+    await tempDir.create();
+  });
+
+  afterEach(async () => {
+    await tempDir.cleanup();
+  });
+
+  it("should normalize existing prd.json with status-only format", async () => {
+    // Create prd.json with status-only format (like TrustGuard)
+    const prdContent = {
+      metadata: { generated: true, generator: "architect-agent" },
+      items: [
+        { id: "1", description: "Pending task", status: "pending" },
+        { id: "2", description: "Done task", status: "done" },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    const result = await runInit({
+      planFile: prdPath,
+      progressFile: tempDir.path("progress.txt"),
+      promptFile: tempDir.path(".ralph-prompt.md"),
+      pluginFile: tempDir.path(".opencode/plugin/ralph-write-guardrail.ts"),
+      agentsFile: tempDir.path("AGENTS.md"),
+      gitignoreFile: tempDir.path(".gitignore"),
+    });
+
+    expect(result.normalized).toContain(prdPath);
+    expect(result.normalizedItemCount).toBe(2);
+
+    // Verify the file was normalized
+    const normalizedContent = await Bun.file(prdPath).json();
+    expect(normalizedContent.items[0].passes).toBe(false);
+    expect(normalizedContent.items[1].passes).toBe(true);
+    
+    // Original metadata should be preserved
+    expect(normalizedContent.metadata.generator).toBe("architect-agent");
+  });
+
+  it("should not re-wrap already normalized prd.json", async () => {
+    // Create prd.json with status-only format
+    const prdContent = {
+      metadata: { 
+        generated: true, 
+        generator: "architect-agent",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        title: "Original Title"
+      },
+      items: [
+        { id: "1", description: "Task", status: "pending" },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    await runInit({
+      planFile: prdPath,
+      progressFile: tempDir.path("progress.txt"),
+      promptFile: tempDir.path(".ralph-prompt.md"),
+      pluginFile: tempDir.path(".opencode/plugin/ralph-write-guardrail.ts"),
+      agentsFile: tempDir.path("AGENTS.md"),
+      gitignoreFile: tempDir.path(".gitignore"),
+    });
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    
+    // Should preserve original metadata, not wrap with ralph-init metadata
+    expect(normalizedContent.metadata.generator).toBe("architect-agent");
+    expect(normalizedContent.metadata.title).toBe("Original Title");
+    expect(normalizedContent.metadata.createdAt).toBe("2026-01-01T00:00:00.000Z");
   });
 });

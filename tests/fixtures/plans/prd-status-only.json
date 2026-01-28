@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "generated": true,
+    "generator": "architect-agent",
+    "createdAt": "2026-01-28T00:00:00.000Z",
+    "title": "Status-Only PRD Test Fixture",
+    "summary": "Tests PRD format with status field but no passes field."
+  },
+  "items": [
+    {
+      "id": "1.1.1",
+      "category": "setup",
+      "description": "Task with status pending (should become passes: false)",
+      "steps": ["Step 1", "Step 2"],
+      "effort": "S",
+      "risk": "L",
+      "status": "pending"
+    },
+    {
+      "id": "1.1.2",
+      "category": "impl",
+      "description": "Task with status done (should become passes: true)",
+      "steps": ["Step 1"],
+      "effort": "M",
+      "risk": "M",
+      "status": "done"
+    },
+    {
+      "id": "1.1.3",
+      "category": "test",
+      "description": "Task with status actionable (should become passes: false)",
+      "steps": ["Step 1"],
+      "effort": "S",
+      "risk": "L",
+      "status": "actionable"
+    }
+  ]
+}
