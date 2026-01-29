@@ -25,9 +25,10 @@
   "items": [
     {
       "id": "1.1.1",
+      "title": "Configure JWT Library",
       "category": "setup",
-      "description": "Configure JWT library and environment variables",
-      "steps": [
+      "description": "As a backend developer, I want to configure the JWT library and environment variables so that we can securely sign and verify tokens.",
+      "acceptanceCriteria": [
         "Install jsonwebtoken package",
         "Add JWT_SECRET to .env.example",
         "Verify token signing works"
@@ -35,13 +36,15 @@
       "effort": "XS",
       "risk": "L",
       "passes": true,
-      "status": "done"
+      "status": "done",
+      "notes": "Used jose library instead of jsonwebtoken for better async support."
     },
     {
       "id": "1.1.2",
+      "title": "Create Login Endpoint",
       "category": "impl",
-      "description": "Create login endpoint with password validation",
-      "steps": [
+      "description": "As a user, I want to login with my credentials so that I can access protected resources.",
+      "acceptanceCriteria": [
         "POST /api/auth/login returns token",
         "Invalid credentials return 401",
         "Rate limiting is enforced"
@@ -53,9 +56,10 @@
     },
     {
       "id": "1.2.1",
+      "title": "Add Authentication Middleware",
       "category": "impl",
-      "description": "Add authentication middleware",
-      "steps": [
+      "description": "As a developer, I want authentication middleware so that protected routes require valid tokens.",
+      "acceptanceCriteria": [
         "Protected routes require valid token",
         "Expired tokens return 401"
       ],

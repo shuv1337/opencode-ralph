@@ -174,7 +174,7 @@ Creates these files:
 <summary><strong>Default Prompt Template</strong></summary>
 
 ```
-READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or steps as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS steps should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.
+READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or acceptanceCriteria as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS acceptanceCriteria should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.
 ```
 
 </details>
@@ -334,14 +334,17 @@ PRD JSON uses `passes` flags so Ralph can track scope and progress. Two formats 
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `description` | ✅ | Task description |
+| `description` | ✅ | Task description (user story format recommended: "As a [user], I want [feature] so that [benefit]") |
 | `passes` | ✅ | Whether complete |
 | `id` | ❌ | Custom ID (e.g., `"1.1.1"`) |
+| `title` | ❌ | Short title for the task |
 | `category` | ❌ | Category (e.g., `functional`, `setup`) |
-| `steps` | ❌ | Verification steps |
+| `acceptanceCriteria` | ❌ | Acceptance criteria for task completion (array of strings) |
+| `notes` | ❌ | Notes written by Ralph during task execution |
 | `status` | ❌ | `pending` / `actionable` / `active` / `done` / `blocked` / `error` |
 | `effort` | ❌ | `XS` / `S` / `M` / `L` / `XL` |
 | `risk` | ❌ | `L` / `M` / `H` |
+| `steps` | ❌ | *(deprecated, use `acceptanceCriteria`)* Verification steps |
 
 **See [`prd.example.json`](prd.example.json) for a complete example with all fields.**
 
