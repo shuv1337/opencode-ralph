@@ -829,12 +829,14 @@ describe("normalizePrdFile", () => {
       items: [
         { 
           id: "1.1.1", 
+          title: "Task Title",
           category: "setup", 
           description: "Task with all fields",
-          steps: ["Step 1", "Step 2"],
+          acceptanceCriteria: ["Criteria 1", "Criteria 2"],
           effort: "M",
           risk: "L",
-          status: "done"
+          status: "done",
+          notes: "Some notes here"
         },
       ],
     };
@@ -851,12 +853,42 @@ describe("normalizePrdFile", () => {
     // Verify item fields are preserved
     const item = normalizedContent.items[0];
     expect(item.id).toBe("1.1.1");
+    expect(item.title).toBe("Task Title");
     expect(item.category).toBe("setup");
-    expect(item.steps).toEqual(["Step 1", "Step 2"]);
+    expect(item.acceptanceCriteria).toEqual(["Criteria 1", "Criteria 2"]);
     expect(item.effort).toBe("M");
     expect(item.risk).toBe("L");
     expect(item.status).toBe("done");
+    expect(item.notes).toBe("Some notes here");
     expect(item.passes).toBe(true); // Added by normalization
+  });
+
+  it("should preserve old steps field for backward compatibility", async () => {
+    const prdContent = {
+      metadata: { 
+        generated: true, 
+        generator: "legacy-tool"
+      },
+      items: [
+        { 
+          id: "1.1.1", 
+          category: "setup", 
+          description: "Task with old steps field",
+          steps: ["Step 1", "Step 2"],
+          status: "done"
+        },
+      ],
+    };
+    const prdPath = await tempDir.write("prd.json", JSON.stringify(prdContent, null, 2));
+
+    await normalizePrdFile(prdPath);
+
+    const normalizedContent = await Bun.file(prdPath).json();
+    
+    // Verify steps are preserved for backward compat
+    const item = normalizedContent.items[0];
+    expect(item.steps).toEqual(["Step 1", "Step 2"]);
+    expect(item.passes).toBe(true);
   });
 });
 

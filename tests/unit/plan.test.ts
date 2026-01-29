@@ -160,16 +160,17 @@ describe("parsePlanTasks", () => {
     const result = await parsePlanTasks(path.join(fixturesDir, "prd-valid.json"));
 
     expect(result.length).toBe(2);
-    // Use toMatchObject to allow for additional fields (effort, risk, steps, etc.)
+    // Use toMatchObject to allow for additional fields (effort, risk, acceptanceCriteria, etc.)
     expect(result[0]).toMatchObject({
       id: "prd-1",
       line: 1,
-      text: "Create the initial project scaffolding",
+      text: "As a developer, I want to create the initial project scaffolding so that the project has a solid foundation.",
       done: true,
       category: "functional",
+      title: "Project Scaffolding",
     });
-    // Also verify steps are included
-    expect(result[0].steps).toEqual([
+    // Also verify acceptanceCriteria are included
+    expect(result[0].acceptanceCriteria).toEqual([
       "Run the project generator",
       "Verify the entry point builds",
     ]);
@@ -177,11 +178,12 @@ describe("parsePlanTasks", () => {
     expect(result[1]).toMatchObject({
       id: "prd-2",
       line: 2,
-      text: "Wire up the API client",
+      text: "As a developer, I want to wire up the API client so that the service layer can communicate with the backend.",
       done: false,
       category: "integration",
+      title: "API Client Integration",
     });
-    expect(result[1].steps).toEqual([
+    expect(result[1].acceptanceCriteria).toEqual([
       "Configure the base URL",
       "Ensure the client is used by the service layer",
     ]);
@@ -196,21 +198,25 @@ describe("parsePlanTasks", () => {
     // First task with custom ID
     expect(result[0].id).toBe("1.1.1");
     expect(result[0].originalId).toBe("1.1.1");
-    expect(result[0].text).toBe("Verify project setup");
+    expect(result[0].title).toBe("Project Setup Verification");
+    expect(result[0].text).toContain("As a developer");
     expect(result[0].done).toBe(true);
     expect(result[0].category).toBe("setup");
     expect(result[0].effort).toBe("XS");
     expect(result[0].risk).toBe("L");
+    expect(result[0].notes).toBe("Setup completed successfully on first attempt.");
     
     // Second task with status
     expect(result[1].id).toBe("1.1.2");
     expect(result[1].originalId).toBe("1.1.2");
+    expect(result[1].title).toBe("Feature Implementation");
     expect(result[1].effort).toBe("M");
     expect(result[1].risk).toBe("M");
     expect(result[1].status).toBe("actionable");
     
     // Third task
     expect(result[2].id).toBe("2.1.1");
+    expect(result[2].title).toBe("Verification Run");
     expect(result[2].status).toBe("pending");
   });
 
@@ -222,6 +228,50 @@ describe("parsePlanTasks", () => {
     expect(result[0].originalId).toBeUndefined();
     expect(result[1].id).toBe("prd-2");
     expect(result[1].originalId).toBeUndefined();
+  });
+
+  it("should support backward compatible old steps field", async () => {
+    // Create a legacy PRD with old 'steps' field instead of 'acceptanceCriteria'
+    const legacyPrd = [
+      {
+        "category": "functional",
+        "description": "Legacy task with steps field",
+        "steps": ["Step 1", "Step 2"],
+        "passes": false
+      }
+    ];
+    
+    const { parsePrdItems } = await import("../../src/plan");
+    const result = parsePrdItems(JSON.stringify(legacyPrd));
+    
+    expect(result).not.toBeNull();
+    expect(result!.length).toBe(1);
+    expect(result![0].steps).toEqual(["Step 1", "Step 2"]);
+    // acceptanceCriteria should be undefined since it wasn't in the legacy PRD
+    expect(result![0].acceptanceCriteria).toBeUndefined();
+  });
+
+  it("should support both acceptanceCriteria and steps fields together", async () => {
+    // PRD with both fields (acceptanceCriteria preferred, steps for backward compat)
+    const hybridPrd = [
+      {
+        "title": "Hybrid Task",
+        "category": "test",
+        "description": "Task with both fields",
+        "acceptanceCriteria": ["New Criteria 1"],
+        "steps": ["Legacy Step 1"],
+        "passes": false
+      }
+    ];
+    
+    const { parsePrdItems } = await import("../../src/plan");
+    const result = parsePrdItems(JSON.stringify(hybridPrd));
+    
+    expect(result).not.toBeNull();
+    expect(result!.length).toBe(1);
+    expect(result![0].acceptanceCriteria).toEqual(["New Criteria 1"]);
+    expect(result![0].steps).toEqual(["Legacy Step 1"]);
+    expect(result![0].title).toBe("Hybrid Task");
   });
 });
 
