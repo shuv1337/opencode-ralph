@@ -20,11 +20,20 @@ export type AcceptanceCriteriaItem = {
 /**
  * Parse acceptance criteria from description, dedicated field, or metadata array.
  * Looks for markdown checklist items (- [ ] or - [x])
+ * Supports both string[] (new PRD format) and string (legacy/inline format)
  */
 function parseAcceptanceCriteria(
   description?: string,
-  acceptanceCriteria?: string
+  acceptanceCriteria?: string[] | string
 ): AcceptanceCriteriaItem[] {
+  // If acceptanceCriteria is an array, convert to checklist format
+  if (Array.isArray(acceptanceCriteria)) {
+    return acceptanceCriteria.map(item => ({
+      checked: false,
+      text: item,
+    }));
+  }
+  
   const content = acceptanceCriteria || description || "";
   const lines = content.split("\n");
   const criteria: AcceptanceCriteriaItem[] = [];
@@ -431,6 +440,30 @@ function TaskDetails(props: { task: UiTask }) {
         {/* Acceptance Criteria */}
         <Show when={hasAcceptanceCriteria()}>
           <AcceptanceCriteriaList task={props.task} />
+        </Show>
+
+        {/* Notes Section */}
+        <Show when={props.task.notes}>
+          <box flexDirection="column" marginTop={1}>
+            <box marginBottom={1}>
+              <text fg={t().primary}>Notes</text>
+            </box>
+            <box 
+              padding={1} 
+              border 
+              borderColor={t().borderSubtle} 
+              backgroundColor={t().backgroundElement}
+            >
+              <text fg={t().text} width="100%">
+                <RenderMarkdownSegments 
+                  text={props.task.notes!} 
+                  normalColor={t().text} 
+                  boldColor={t().accent} 
+                  tagColor={t().secondary}
+                />
+              </text>
+            </box>
+          </box>
         </Show>
       </scrollbox>
 

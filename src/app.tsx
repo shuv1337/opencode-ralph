@@ -705,7 +705,10 @@ function AppContent(props: AppContentProps) {
       
       return {
         id: task.id,
-        title: task.text,
+        // Use dedicated title field if available, otherwise fallback to text (description)
+        title: task.title || task.text,
+        // Store description separately for detail view
+        description: task.text,
         status: status as TaskStatus,
         line: task.line,
         priority: task.priority,
@@ -713,7 +716,11 @@ function AppContent(props: AppContentProps) {
         effort: task.effort,
         risk: task.risk,
         originalId: task.originalId,
+        // Include both acceptanceCriteria and legacy steps for compatibility
+        acceptanceCriteria: task.acceptanceCriteria,
         steps: task.steps,
+        // Include notes for display
+        notes: task.notes,
       };
     })
   );
