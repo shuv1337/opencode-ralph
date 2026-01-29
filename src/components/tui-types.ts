@@ -25,6 +25,7 @@ export type DetailsViewMode = "details" | "output" | "prompt";
  */
 export type UiTask = {
   id: string;
+  /** Short title for the task */
   title: string;
   status: TaskStatus;
   line?: number;
@@ -35,16 +36,18 @@ export type UiTask = {
   priority?: number;
   /** Task category for grouping/tags */
   category?: string;
-  /** Acceptance criteria items parsed from description */
-  acceptanceCriteria?: string;
+  /** Acceptance criteria for task completion (preferred) */
+  acceptanceCriteria?: string[];
+  /** @deprecated Use acceptanceCriteria instead. Verification steps from PRD (backward compat) */
+  steps?: string[];
   /** Effort estimate (e.g., "XS", "S", "M", "L", "XL") */
   effort?: string;
   /** Risk level (e.g., "L", "M", "H" for Low/Medium/High) */
   risk?: string;
   /** Original custom ID from PRD (e.g., "1.1.1") */
   originalId?: string;
-  /** Verification steps from PRD */
-  steps?: string[];
+  /** Notes written by Ralph during task execution */
+  notes?: string;
 };
 
 /**

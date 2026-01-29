@@ -8,8 +8,14 @@ import type { TaskStatus } from "./types/task-status";
 export type PrdItem = {
   /** Custom task identifier (e.g., "1.1.1") - if not provided, uses array index */
   id?: string;
+  /** Short title for the task */
+  title?: string;
   category?: string;
+  /** User story style description: "As a [user], I want [feature] so that [benefit]" */
   description: string;
+  /** Acceptance criteria for task completion (preferred new field) */
+  acceptanceCriteria?: string[];
+  /** @deprecated Use acceptanceCriteria instead. Kept for backward compatibility. */
   steps?: string[];
   passes: boolean;
   status?: TaskStatus;
@@ -17,6 +23,8 @@ export type PrdItem = {
   effort?: string;
   /** Risk level (e.g., "L", "M", "H" for Low/Medium/High) */
   risk?: string;
+  /** Notes written by Ralph during task execution */
+  notes?: string;
 };
 
 
@@ -41,6 +49,8 @@ export type PlanProgress = {
 export type Task = {
   /** Unique identifier derived from custom id or line number */
   id: string;
+  /** Short title for the task */
+  title?: string;
   /** Line number in the file (1-indexed) */
   line: number;
   /** Task text without the checkbox prefix */
@@ -59,8 +69,12 @@ export type Task = {
   risk?: string;
   /** Original custom ID from PRD (if present) */
   originalId?: string;
-  /** Verification steps from PRD */
+  /** Acceptance criteria from PRD (preferred) */
+  acceptanceCriteria?: string[];
+  /** @deprecated Use acceptanceCriteria instead. Verification steps from PRD (backward compat) */
   steps?: string[];
+  /** Notes written by Ralph during task execution */
+  notes?: string;
 };
 
 
@@ -90,6 +104,9 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
       return null;
     }
     const candidate = item as Record<string, unknown>;
+    
+    // Support both title-first and description-first formats
+    const title = typeof candidate.title === "string" ? candidate.title : undefined;
     const description =
       typeof candidate.description === "string"
         ? candidate.description
@@ -105,7 +122,20 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
       return null;
     }
 
+    // Support both new acceptanceCriteria and old steps field (backward compat)
+    const acceptanceCriteria = candidate.acceptanceCriteria;
     const steps = candidate.steps;
+    
+    // Validate acceptanceCriteria if present
+    if (
+      acceptanceCriteria !== undefined &&
+      (!Array.isArray(acceptanceCriteria) || acceptanceCriteria.some((ac) => typeof ac !== "string"))
+    ) {
+      log("plan", `Invalid 'acceptanceCriteria' array at index ${i}`, { item });
+      return null;
+    }
+    
+    // Validate steps if present (backward compat)
     if (
       steps !== undefined &&
       (!Array.isArray(steps) || steps.some((step) => typeof step !== "string"))
@@ -114,15 +144,22 @@ function normalizePrdItems(data: unknown): PrdItem[] | null {
       return null;
     }
 
+    // Notes field
+    const notes = typeof candidate.notes === "string" ? candidate.notes : undefined;
+
     normalized.push({
       id: typeof candidate.id === "string" ? candidate.id : undefined,
+      title,
       category: typeof candidate.category === "string" ? candidate.category : undefined,
       description,
+      // Prefer acceptanceCriteria, fallback to steps for backward compat
+      acceptanceCriteria: acceptanceCriteria as string[] | undefined,
       steps: steps as string[] | undefined,
       passes: candidate.passes as boolean,
       status: typeof candidate.status === "string" ? (candidate.status as TaskStatus) : undefined,
       effort: typeof candidate.effort === "string" ? candidate.effort : undefined,
       risk: typeof candidate.risk === "string" ? candidate.risk : undefined,
+      notes,
     });
   }
 
@@ -205,6 +242,7 @@ export async function parsePlanTasks(path: string): Promise<Task[]> {
       const taskId = item.id || fallbackId;
       return {
         id: taskId,
+        title: item.title,
         line: index + 1,
         text: item.description,
         done: item.passes,
@@ -212,7 +250,10 @@ export async function parsePlanTasks(path: string): Promise<Task[]> {
         status: item.status,
         effort: item.effort,
         risk: item.risk,
+        // Include both for compatibility - prefer acceptanceCriteria
+        acceptanceCriteria: item.acceptanceCriteria,
         steps: item.steps,
+        notes: item.notes,
         // Store original custom ID for matching during save
         originalId: item.id,
       };
