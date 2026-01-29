@@ -25,18 +25,21 @@
   "items": [
     {
       "id": "1.1.1",
+      "title": "Project Setup Verification",
       "category": "setup",
-      "description": "Verify project setup",
-      "steps": ["Run bun install", "Verify dependencies"],
+      "description": "As a developer, I want to verify project setup so that all dependencies are correctly installed.",
+      "acceptanceCriteria": ["Run bun install", "Verify dependencies"],
       "effort": "XS",
       "risk": "L",
-      "passes": true
+      "passes": true,
+      "notes": "Setup completed successfully on first attempt."
     },
     {
       "id": "1.1.2",
+      "title": "Feature Implementation",
       "category": "impl",
-      "description": "Implement feature",
-      "steps": ["Write code", "Add tests"],
+      "description": "As a developer, I want to implement the feature so that the functionality is available.",
+      "acceptanceCriteria": ["Write code", "Add tests"],
       "effort": "M",
       "risk": "M",
       "passes": false,
@@ -44,9 +47,10 @@
     },
     {
       "id": "2.1.1",
+      "title": "Verification Run",
       "category": "test",
-      "description": "Run verification",
-      "steps": ["Run tests", "Check coverage"],
+      "description": "As a QA engineer, I want to run verification so that I can confirm the implementation works.",
+      "acceptanceCriteria": ["Run tests", "Check coverage"],
       "effort": "S",
       "risk": "L",
       "passes": false,

@@ -1,17 +1,19 @@
 [
   {
+    "title": "Project Scaffolding",
     "category": "functional",
-    "description": "Create the initial project scaffolding",
-    "steps": [
+    "description": "As a developer, I want to create the initial project scaffolding so that the project has a solid foundation.",
+    "acceptanceCriteria": [
       "Run the project generator",
       "Verify the entry point builds"
     ],
     "passes": true
   },
   {
+    "title": "API Client Integration",
     "category": "integration",
-    "description": "Wire up the API client",
-    "steps": [
+    "description": "As a developer, I want to wire up the API client so that the service layer can communicate with the backend.",
+    "acceptanceCriteria": [
       "Configure the base URL",
       "Ensure the client is used by the service layer"
     ],

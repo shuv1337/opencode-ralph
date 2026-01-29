@@ -1,18 +1,20 @@
 {
   "items": [
     {
+      "title": "Dashboard Rendering",
       "category": "functional",
-      "description": "Render the dashboard view",
-      "steps": [
+      "description": "As a user, I want to render the dashboard view so that I can see my widgets.",
+      "acceptanceCriteria": [
         "Load the dashboard route",
         "Verify widgets render"
       ],
       "passes": false
     },
     {
+      "title": "Linting Configuration",
       "category": "quality",
-      "description": "Add linting configuration",
-      "steps": [
+      "description": "As a developer, I want to add linting configuration so that code quality is enforced.",
+      "acceptanceCriteria": [
         "Add lint config file",
         "Run lint with no errors"
       ],
