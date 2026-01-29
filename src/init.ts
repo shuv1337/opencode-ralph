@@ -320,7 +320,7 @@ export function isGeneratedProgress(content: string): boolean {
 }
 
 const DEFAULT_CATEGORY = "functional";
-const DEFAULT_STEP = "Add verification steps for this item.";
+const DEFAULT_ACCEPTANCE_CRITERIA = "Add acceptance criteria for this item.";
 
 /**
  * Frontmatter marker for generated prompt files.
@@ -336,14 +336,14 @@ safe_to_delete: true
 const PROMPT_TEMPLATE = `${GENERATED_PROMPT_MARKER}READ all of {{PLAN_FILE}} and {{PROGRESS_FILE}}.
 Pick ONE task with passes=false (prefer highest-risk/highest-impact).
 Keep changes small: one logical change per commit.
-Update {{PLAN_FILE}} by setting passes=true and adding notes or steps as needed.
+Update {{PLAN_FILE}} by setting passes=true and adding notes or acceptanceCriteria as needed.
 Append a brief entry to {{PROGRESS_FILE}} with what changed and why.
 Run feedback loops before committing:
 - bun run typecheck
 - bun test
 - bun run lint (if missing, note in {{PROGRESS_FILE}} and continue)
 Commit the change (include {{PLAN_FILE}} updates).
-ONLY do one task unless GLARINGLY OBVIOUS steps should run together.
+ONLY do one task unless GLARINGLY OBVIOUS acceptanceCriteria should run together.
 Quality bar: production code, maintainable, tests when appropriate.
 If you learn a critical operational detail, update AGENTS.md.
 When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>.
@@ -518,9 +518,10 @@ function extractTasksFromText(content: string): ExtractedTask[] {
 function createTemplateItems(): PrdItem[] {
   return [
     {
+      title: "First PRD Item",
       category: DEFAULT_CATEGORY,
-      description: "Define the first PRD item for this project.",
-      steps: [DEFAULT_STEP],
+      description: "As a developer, I want to define the first PRD item so that I can start tracking project tasks.",
+      acceptanceCriteria: [DEFAULT_ACCEPTANCE_CRITERIA],
       passes: false,
     },
   ];
@@ -530,7 +531,7 @@ function createPrdItemsFromTasks(tasks: ExtractedTask[]): PrdItem[] {
   return tasks.map((task) => ({
     category: task.category ?? DEFAULT_CATEGORY,
     description: task.description,
-    steps: [DEFAULT_STEP],
+    acceptanceCriteria: [DEFAULT_ACCEPTANCE_CRITERIA],
     passes: task.passes,
   }));
 }
