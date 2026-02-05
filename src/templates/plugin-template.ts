@@ -182,8 +182,34 @@ const DESTRUCTIVE_COMMAND_PATTERNS = [
   // truncate command
   /^truncate\\s+.*\\b(FILENAME)\\b/,
   // shred command
-  /^shred\\s+.*\\b(FILENAME)\\b/,
+  /^shred\\\\s+.*\\\\b(FILENAME)\\\\b/,
+  // git rm - explicitly removes file from repository
+  /git\\\\s+rm\\\\s+.*\\\\b(FILENAME)\\\\b/,
+  // git mv - moves/renames file in repository
+  /git\\\\s+mv\\\\s+.*\\\\b(FILENAME)\\\\b/,
 ]
+
+/**
+ * Strips quoted content from a command to avoid false positives.
+ * This removes content inside single quotes, double quotes, and backticks
+ * so that commit messages and other quoted strings don't trigger keyword checks.
+ * 
+ * For example: git commit -m "Updated AGENTS.md with Crossterm docs"
+ * The quoted message won't trigger "rm " detection from "Crossterm " substring.
+ * 
+ * Platform agnostic - works on Windows, Linux, and macOS.
+ */
+function stripQuotedContent(command: string): string {
+  let result = command
+  
+  // Remove double-quoted strings (handles escaped quotes inside)
+  result = result.replace(/"(?:[^"\\\\]|\\\\.)*"/g, '""')
+  
+  // Remove single-quoted strings (no escape processing in single quotes)
+  result = result.replace(/'[^']*'/g, "''")
+  
+  return result
+}
 
 /**
  * Checks if a file path matches any protected file.
@@ -205,12 +231,28 @@ function isProtectedFile(filePath: string): string | null {
 
 /**
  * Checks if a bash command would modify any protected file.
+ * 
+ * Uses a two-phase approach:
+ * 1. First checks regex patterns against the FULL command (for redirect operators, etc.)
+ * 2. Then checks keyword presence against command with quoted content STRIPPED
+ *    (to avoid false positives from commit messages mentioning protected files)
+ * 
+ * This prevents false positives where commit messages contain words like "Crossterm"
+ * which would incorrectly match the "rm " dangerous keyword check.
+ * 
+ * Platform agnostic - works on Windows, Linux, and macOS.
  */
 function wouldModifyProtectedFile(command: string): string | null {
+  // Strip quoted content for keyword checks to avoid false positives
+  // from commit messages that mention protected files or contain words like "Crossterm"
+  const unquotedCommand = stripQuotedContent(command)
+  
   for (const protectedFile of PROTECTED_FILES) {
     // Create file-specific patterns
     const escapedFileName = protectedFile.replace(/[.*+?^\${}()|[\\]\\\\]/g, "\\\\$&")
     
+    // Phase 1: Check regex patterns against the FULL command
+    // This catches things like: echo "test" > prd.json (redirect outside quotes)
     for (const patternTemplate of DESTRUCTIVE_COMMAND_PATTERNS) {
       const pattern = new RegExp(
         patternTemplate.source.replace(/FILENAME/g, escapedFileName),
@@ -221,11 +263,22 @@ function wouldModifyProtectedFile(command: string): string | null {
       }
     }
     
-    // Also check for simple string presence with destructive keywords
-    if (command.includes(protectedFile)) {
-      const dangerousKeywords = ["rm ", "rm\\t", "mv ", "truncate ", "shred ", "> ", ">> "]
-      for (const keyword of dangerousKeywords) {
-        if (command.includes(keyword)) {
+    // Phase 2: Check for protected file in UNQUOTED part of command with dangerous patterns
+    // This avoids false positives from quoted content like commit messages
+    if (unquotedCommand.includes(protectedFile)) {
+      // Use word-boundary aware patterns for dangerous commands
+      // These patterns ensure we match actual commands, not substrings in words like "Crossterm"
+      const dangerousPatterns = [
+        /(?:^|[;&|])\\s*rm\\s/,        // rm command at start or after separator
+        /(?:^|[;&|])\\s*mv\\s/,        // mv command
+        /(?:^|[;&|])\\s*truncate\\s/,  // truncate command
+        /(?:^|[;&|])\\s*shred\\s/,     // shred command
+        />\\s*$/,                       // redirect at end of unquoted part
+        />>\\s*$/,                      // append redirect at end
+      ]
+      
+      for (const pattern of dangerousPatterns) {
+        if (pattern.test(unquotedCommand)) {
           return protectedFile
         }
       }
