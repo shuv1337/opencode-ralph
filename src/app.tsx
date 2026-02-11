@@ -8,7 +8,6 @@ import { RightPanel } from "./components/right-panel";
 import { ProgressDashboard } from "./components/progress-dashboard";
 import { HelpOverlay } from "./components/help-overlay";
 import { PausedOverlay } from "./components/paused";
-import { SteeringOverlay } from "./components/steering";
 import { DialogProvider, DialogStack, useDialog, useInputFocus } from "./context/DialogContext";
 import { CommandProvider, useCommand, type CommandOption } from "./context/CommandContext";
 import { ToastProvider, useToast } from "./context/ToastContext";
@@ -38,7 +37,7 @@ import {
   validateRequirements,
   formatRequirementsError,
 } from "./lib/requirements";
-import { addSteeringContext, createDebugSession } from "./loop";
+import { createDebugSession } from "./loop";
 import { createLoopState, type LoopStateStore } from "./hooks/useLoopState";
 import { createLoopStats, type LoopStatsStore } from "./hooks/useLoopStats";
 
@@ -283,10 +282,6 @@ export function App(props: AppProps) {
     return result;
   };
 
-  // Steering mode state signals
-  const [commandMode, setCommandMode] = createSignal(false);
-  const [commandInput, setCommandInput] = createSignal("");
-
   // Tasks panel state signals
   const [showTasks, setShowTasks] = createSignal(true);
   const [tasks, setTasks] = createSignal<Task[]>([]);
@@ -442,13 +437,10 @@ export function App(props: AppProps) {
       <ToastProvider>
         <DialogProvider>
           <CommandProvider onShowPalette={showCommandPalette}>
-              <AppContent
+            <AppContent
                 state={state}
                 setState={setStateAndRender}
                 options={props.options}
-              commandMode={commandMode}
-              setCommandMode={setCommandMode}
-              setCommandInput={setCommandInput}
               togglePause={togglePause}
               renderer={renderer}
               onQuit={props.onQuit}
@@ -483,9 +475,6 @@ type AppContentProps = {
   state: () => LoopState;
   setState: Setter<LoopState>;
   options: LoopOptions;
-  commandMode: () => boolean;
-  setCommandMode: (v: boolean) => void;
-  setCommandInput: (v: string) => void;
   togglePause: () => Promise<void>;
   renderer: ReturnType<typeof useRenderer>;
   onQuit: () => void;
@@ -549,8 +538,8 @@ function AppContent(props: AppContentProps) {
   // Get theme colors reactively - call theme.theme() to access the resolved theme
   const t = () => theme.theme();
 
-  // Combined check for any input being focused
-  const isInputFocused = () => props.commandMode() || dialogInputFocused();
+  // Combined check for any input being focused (dialog inputs)
+  const isInputFocused = () => dialogInputFocused();
 
   const terminalDimensions = useTerminalDimensions();
   
@@ -1030,33 +1019,6 @@ function AppContent(props: AppContentProps) {
         },
       },
     ]);
-
-    // Register "Write heap snapshot" command (Inspired by recent OpenCode update)
-    command.register("heapSnapshot", () => [
-      {
-        title: "Write heap snapshot",
-        value: "heapSnapshot",
-        description: "Write a V8 heap snapshot to disk for memory debugging",
-        onSelect: async () => {
-          try {
-            const { writeHeapSnapshot } = await import("v8");
-            const path = writeHeapSnapshot();
-            toast.show({
-              variant: "info",
-              message: `Heap snapshot written to ${path}`,
-              duration: 5000,
-            });
-            log("app", "Heap snapshot written", { path });
-          } catch (err) {
-            log("app", "Failed to write heap snapshot", { error: String(err) });
-            toast.show({
-              variant: "error",
-              message: "Failed to write heap snapshot",
-            });
-          }
-        },
-      },
-    ]);
   });
 
   /**
@@ -1493,23 +1455,6 @@ function AppContent(props: AppContentProps) {
   };
 
   /**
-   * Detect if the `:` (colon) key was pressed.
-   * Handles multiple keyboard configurations:
-   * - Direct `:` character (Kitty protocol or non-US keyboards)
-   * - Shift+`;` (US keyboard layout via raw mode)
-   * - Semicolon with shift modifier
-   */
-  const isColonKey = (e: KeyEvent): boolean => {
-    // Direct colon character (most common case with Kitty protocol)
-    if (e.name === ":") return true;
-    // Raw character is colon
-    if (e.raw === ":") return true;
-    // Shift+semicolon on US keyboard layout
-    if (e.name === ";" && e.shift) return true;
-    return false;
-  };
-
-  /**
    * Show the command palette dialog with all registered commands.
    */
   const showCommandPalette = () => {
@@ -1569,7 +1514,6 @@ function AppContent(props: AppContentProps) {
         meta: e.meta,
         raw: e.raw,
         isInputFocused: isInputFocused(),
-        commandMode: props.commandMode(),
         dialogInputFocused: dialogInputFocused(),
       });
     }
@@ -1590,10 +1534,9 @@ function AppContent(props: AppContentProps) {
     }
 
 
-    // Skip if any input is focused (dialogs, steering mode, etc.)
+    // Skip if any input is focused (dialogs, etc.)
     if (isInputFocused()) {
       log("keyboard", "AppContent: skipping due to isInputFocused", {
-        commandMode: props.commandMode(),
         dialogInputFocused: dialogInputFocused(),
       });
       return;
@@ -1692,18 +1635,6 @@ function AppContent(props: AppContentProps) {
     if (matchesKeybind(e, keymap.commandPalette)) {
       log("app", "Command palette opened via 'c' key");
       showCommandPalette();
-      return;
-    }
-
-    // : key: open steering mode (requires active session)
-    if (isColonKey(e) && !e.ctrl && !e.meta) {
-      const currentState = props.state();
-      // Only allow steering when there's an active session
-      if (currentState.sessionId || currentState.adapterMode === "pty") {
-        log("app", "Steering mode opened via ':' key");
-        props.setCommandMode(true);
-        props.setCommandInput("");
-      }
       return;
     }
 
@@ -1842,22 +1773,6 @@ function AppContent(props: AppContentProps) {
       />
 
       <PausedOverlay visible={props.state().status === "paused"} />
-      <SteeringOverlay
-        visible={props.commandMode()}
-        onClose={() => {
-          props.setCommandMode(false);
-          props.setCommandInput("");
-        }}
-        onSend={async (message) => {
-          addSteeringContext(message);
-          if (globalSendMessage) {
-            log("app", "Sending steering message", { message });
-            await globalSendMessage(message);
-          } else {
-            log("app", "No sendMessage function available");
-          }
-        }}
-      />
       <HelpOverlay visible={showHelp()} />
       <DialogStack />
       <ToastStack />

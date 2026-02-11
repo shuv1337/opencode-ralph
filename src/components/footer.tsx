@@ -49,9 +49,6 @@ export function Footer(props: FooterProps) {
 
   const shortcuts = () => {
     const list = [...keyboardShortcuts];
-    if (props.sessionActive) {
-      list.splice(3, 0, { key: ":", description: "Steer" });
-    }
     // Show rate limit warning in shortcuts if rate limited
     if (props.rateLimitState?.limitedAt) {
       list.push({ key: "⏳", description: "Rate Limited" });

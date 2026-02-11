@@ -13,8 +13,8 @@ describe("keymap", () => {
       expect(keymap.toggleTasks).toBeDefined();
       expect(keymap.togglePause).toBeDefined();
       expect(keymap.quit).toBeDefined();
-      expect(keymap.steer).toBeDefined();
       expect(keymap.commandPalette).toBeDefined();
+      expect(keymap.toggleTaskStatus).toBeDefined();
     });
 
     it("should have commandPalette as plain C (no modifiers)", () => {

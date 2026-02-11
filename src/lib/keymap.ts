@@ -49,12 +49,6 @@ export const keymap = {
     label: "Q",
   } as KeybindDef,
 
-  /** Open steering mode for sending messages */
-  steer: {
-    key: ":",
-    label: ":",
-  } as KeybindDef,
-
   /** Open command palette */
   commandPalette: {
     key: "c",

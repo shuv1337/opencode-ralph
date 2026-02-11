@@ -131,7 +131,6 @@ export const fullKeyboardShortcuts: FullKeyboardShortcut[] = [
   { key: "s", description: "Start execution", category: "Execution" },
   { key: "p", description: "Pause / Resume execution", category: "Execution" },
   { key: "x", description: "Toggle task status (staged)", category: "Execution" },
-  { key: ":", description: "Steer active session", category: "Execution" },
   // Views
   { key: "o", description: "Toggle details / output view", category: "Views" },
   { key: "T", description: "Show / hide task list", category: "Views" },

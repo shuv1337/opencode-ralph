@@ -14,20 +14,6 @@ import { ErrorHandler, ErrorContext } from "./lib/error-handler";
 
 const DEFAULT_PROMPT = `READ all of {plan} and {progress}. Pick ONE task with passes=false (prefer highest-risk/highest-impact). Keep changes small: one logical change per commit. Update {plan} by setting passes=true and adding notes or acceptanceCriteria as needed. Append a brief entry to {progress} with what changed and why. Run feedback loops before committing: bun run typecheck, bun test, bun run lint (if missing, note it in {progress} and continue). Commit change (update {plan} in the same commit). ONLY do one task unless GLARINGLY OBVIOUS acceptanceCriteria should run together. Quality bar: production code, maintainable, tests when appropriate. If you learn a critical operational detail, update AGENTS.md. When ALL tasks complete, create .ralph-done and output <promise>COMPLETE</promise>. NEVER GIT PUSH. ONLY COMMIT.`;
 
-
-const steeringContext: string[] = [];
-
-export function addSteeringContext(message: string): void {
-  const trimmed = message.trim();
-  if (!trimmed) return;
-  steeringContext.push(trimmed);
-}
-
-function applySteeringContext(prompt: string): string {
-  if (steeringContext.length === 0) return prompt;
-  return `${prompt}\n\nAdditional context from user:\n${steeringContext.join("\n")}`;
-}
-
 const DEFAULT_PORT = 4190;
 
 function getServerAuthHeader(): string | undefined {
@@ -1025,7 +1011,7 @@ export async function runLoop(
         }
 
         // Parse model and build prompt before session creation
-        const promptText = applySteeringContext(await buildPrompt(options));
+        const promptText = await buildPrompt(options);
         callbacks.onPrompt?.(promptText);
         const { providerID, modelID } = parseModel(currentModel);
 
@@ -1629,7 +1615,7 @@ async function runPtyLoop(
         log("loop", "Debug mode: skipping plan file validation");
       }
 
-      const promptText = applySteeringContext(await buildPrompt(options));
+      const promptText = await buildPrompt(options);
 
       const session = await adapter.execute({
         prompt: promptText,

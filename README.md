@@ -411,7 +411,6 @@ Ralph writes operational learnings here. Future iterations read it.
 | `Ctrl+C` (double) | Force quit |
 | `p` | Pause/Resume loop |
 | `c` | Open command palette |
-| `:` | Steering mode (send message to agent) |
 | `t` | Launch terminal with attach command |
 | `Shift+T` | Toggle tasks panel |
 | `o` | Toggle Details/Output view |
