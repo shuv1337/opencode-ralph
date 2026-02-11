@@ -3,7 +3,7 @@ import { dirname, extname, join } from "path";
 import { parsePrdItems, type PrdItem } from "./plan";
 import { PLUGIN_TEMPLATE } from "./templates/plugin-template";
 import { AGENTS_TEMPLATE } from "./templates/agents-template";
-import { isRedundantTask } from "./lib/task-deduplication";
+import { parseMarkdownPlan } from "./lib/markdown-plan-parser";
 import type { TaskStatus } from "./types/task-status";
 
 // Re-export for backwards compatibility
@@ -445,7 +445,6 @@ type ExtractedTask = {
 
 function extractTasksFromText(content: string): ExtractedTask[] {
   const tasks: ExtractedTask[] = [];
-  const taskDescriptions: string[] = [];
   let inCodeBlock = false;
 
   for (const line of content.split("\n")) {
@@ -503,12 +502,6 @@ function extractTasksFromText(content: string): ExtractedTask[] {
       description = categoryMatch[2].trim();
     }
 
-    // Use smart deduplication to skip redundant tasks
-    if (isRedundantTask(description, taskDescriptions)) {
-      continue;
-    }
-
-    taskDescriptions.push(description);
     tasks.push({ description, passes, category });
   }
 
@@ -604,6 +597,7 @@ export async function runInit(options: InitOptions): Promise<InitResult> {
   const looksLikeJson = trimmedSource.startsWith("{") || trimmedSource.startsWith("[");
   const parsedItems = sourceText ? parsePrdItems(sourceText) : null;
   let prdItems: PrdItem[] = [];
+  let parsedMetadata: ExtendedPrdMetadata | null = null;
   
   // Check if target prd.json already exists and might need normalization
   const targetPrdExists = await Bun.file(resolvedPlan.planFile).exists();
@@ -634,15 +628,48 @@ export async function runInit(options: InitOptions): Promise<InitResult> {
     if (parsedItems) {
       prdItems = parsedItems;
     } else if (sourceText) {
-      const tasks = extractTasksFromText(sourceText);
-      if (tasks.length > 0) {
-        prdItems = createPrdItemsFromTasks(tasks);
-      } else {
-        prdItems = createTemplateItems();
-        if (looksLikeJson) {
-          result.warnings.push("Invalid PRD JSON detected. Creating a template PRD instead.");
+      // Always use the comprehensive markdown parser for better extraction
+      // (IDs, categories, effort, risk, acceptance criteria, etc.)
+      const markdownResult = parseMarkdownPlan(sourceText, {
+        sourceFile: sourcePath ?? undefined,
+      });
+      
+      if (markdownResult.items.length > 0) {
+        prdItems = markdownResult.items;
+        result.warnings.push(...markdownResult.warnings);
+        
+        // Preserve the parsed metadata for the generated PRD
+        // Copy all extended metadata fields (title, summary, assumptions, etc.)
+        if (markdownResult.metadata) {
+          parsedMetadata = {
+            generated: true as const,
+            generator: markdownResult.metadata.generator || "ralph-init",
+            createdAt: new Date().toISOString(),
+            sourceFile: sourcePath ?? undefined,
+            // Copy extended metadata fields
+            title: markdownResult.metadata.title,
+            summary: markdownResult.metadata.summary,
+            assumptions: markdownResult.metadata.assumptions,
+            approach: markdownResult.metadata.approach,
+            risks: markdownResult.metadata.risks,
+            estimatedEffort: markdownResult.metadata.estimatedEffort,
+            totalTasks: markdownResult.metadata.totalTasks ?? prdItems.length,
+          };
+        }
+      }
+      
+      // Fallback to simple extraction if comprehensive parser found nothing
+      if (prdItems.length === 0) {
+        const tasks = extractTasksFromText(sourceText);
+        if (tasks.length > 0) {
+          prdItems = createPrdItemsFromTasks(tasks);
         } else {
-          result.warnings.push("Unable to extract tasks from the source plan. Creating a template PRD instead.");
+          prdItems = createTemplateItems();
+          if (looksLikeJson) {
+            result.warnings.push("Invalid PRD JSON detected. Creating a template PRD instead.");
+          } else {
+            result.warnings.push("Unable to extract tasks from the source plan. Creating a template PRD instead.");
+          }
         }
       }
     } else {
@@ -655,13 +682,21 @@ export async function runInit(options: InitOptions): Promise<InitResult> {
   
   if (!alreadyNormalized) {
     // Wrap PRD items with metadata to mark as generated
-    const generatedPrd: GeneratedPrd = {
-      metadata: {
-        generated: true,
-        generator: "ralph-init",
-        createdAt: new Date().toISOString(),
-        sourceFile: sourcePath ?? undefined,
-      },
+    // Use parsed metadata if available (from structured markdown), otherwise create default
+    const baseMetadata: PrdMetadata = {
+      generated: true,
+      generator: parsedMetadata?.generator || "ralph-init",
+      createdAt: parsedMetadata?.createdAt || new Date().toISOString(),
+      sourceFile: parsedMetadata?.sourceFile || (sourcePath ?? undefined),
+    };
+    
+    // Merge extended metadata fields if present
+    const fullMetadata = parsedMetadata 
+      ? { ...baseMetadata, ...parsedMetadata, generated: true as const }
+      : baseMetadata;
+    
+    const generatedPrd = {
+      metadata: fullMetadata,
       items: prdItems,
     };
     const planContent = JSON.stringify(generatedPrd, null, 2) + "\n";
