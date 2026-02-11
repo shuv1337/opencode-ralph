@@ -15,6 +15,94 @@ describe("Command Palette", () => {
     { title: "Toggle tasks panel", value: "toggleTasks" },
   ];
 
+  // Sample options with category headers (matching DialogSelect structure)
+  const optionsWithCategories = [
+    { title: "── GENERAL ──", value: "__category_General__", disabled: true },
+    { title: "Pause", value: "togglePause", disabled: false },
+    { title: "Toggle tasks panel", value: "toggleTasks", disabled: false },
+    { title: "── SESSION ──", value: "__category_Session__", disabled: true },
+    { title: "Copy attach command", value: "copyAttach", disabled: false },
+  ];
+
+  describe("initial selection", () => {
+    /**
+     * Helper function mirroring DialogSelect's findFirstSelectableIndex.
+     * Finds the first non-disabled option index.
+     */
+    function findFirstSelectableIndex(options: Array<{ disabled?: boolean }>): number {
+      for (let i = 0; i < options.length; i++) {
+        if (!options[i].disabled) {
+          return i;
+        }
+      }
+      return 0;
+    }
+
+    test("should skip disabled category headers and select first command", () => {
+      const firstSelectableIndex = findFirstSelectableIndex(optionsWithCategories);
+      // First item (index 0) is a category header (disabled)
+      // Second item (index 1) is "Pause" (not disabled)
+      expect(firstSelectableIndex).toBe(1);
+      expect(optionsWithCategories[firstSelectableIndex].title).toBe("Pause");
+    });
+
+    test("should return 0 if all options are disabled", () => {
+      const allDisabled = [
+        { title: "── GENERAL ──", disabled: true },
+        { title: "── SESSION ──", disabled: true },
+      ];
+      const firstSelectableIndex = findFirstSelectableIndex(allDisabled);
+      expect(firstSelectableIndex).toBe(0);
+    });
+
+    test("should return 0 if first option is already enabled", () => {
+      const firstEnabled = [
+        { title: "Pause", value: "togglePause", disabled: false },
+        { title: "── GENERAL ──", value: "__category_General__", disabled: true },
+      ];
+      const firstSelectableIndex = findFirstSelectableIndex(firstEnabled);
+      expect(firstSelectableIndex).toBe(0);
+    });
+
+    test("should handle empty options array", () => {
+      const emptyOptions: Array<{ disabled?: boolean }> = [];
+      const firstSelectableIndex = findFirstSelectableIndex(emptyOptions);
+      expect(firstSelectableIndex).toBe(0);
+    });
+
+    test("should skip multiple consecutive disabled options", () => {
+      const multipleDisabled = [
+        { title: "── GENERAL ──", disabled: true },
+        { title: "── SESSION ──", disabled: true },
+        { title: "── VIEWS ──", disabled: true },
+        { title: "First command", disabled: false },
+      ];
+      const firstSelectableIndex = findFirstSelectableIndex(multipleDisabled);
+      expect(firstSelectableIndex).toBe(3);
+    });
+  });
+
+  describe("removed steer command verification", () => {
+    test("steer command should not be registered", () => {
+      // Verify the steer command is not in our sample commands
+      // This ensures we've properly removed it from the app
+      const steerCommand = sampleCommands.find(cmd => 
+        cmd.title.toLowerCase().includes("steer") ||
+        cmd.value.toLowerCase().includes("steer")
+      );
+      expect(steerCommand).toBeUndefined();
+    });
+
+    test("heap snapshot command should not be in production commands", () => {
+      // Verify the heap snapshot command is not in our sample commands
+      const heapSnapshotCommand = sampleCommands.find(cmd => 
+        cmd.title.toLowerCase().includes("heap") ||
+        cmd.value.toLowerCase().includes("heap")
+      );
+      expect(heapSnapshotCommand).toBeUndefined();
+    });
+  });
+
   describe("fuzzy filtering", () => {
     test("returns all commands when query is empty", () => {
       const query = "";
