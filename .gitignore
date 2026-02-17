@@ -9,3 +9,6 @@ dist/
 .reference/
 CONTEXT/
 package-lock.json
+
+# Windows reserved device names (can be accidentally created by shell redirects)
+nul
