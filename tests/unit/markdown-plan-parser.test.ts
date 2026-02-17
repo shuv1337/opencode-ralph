@@ -137,6 +137,67 @@ No closing delimiter`;
     expect(result.frontmatter).toBeNull();
     expect(result.body).toBe(content);
   });
+
+  it("should parse frontmatter with multi-line string values", () => {
+    const content = `---
+title: My Project
+summary:
+  'This is a long summary that spans
+  multiple lines in the YAML frontmatter.'
+approach:
+  Start with backend API, then wire up
+  frontend components
+estimatedEffort: '3-5 days'
+---
+# Content`;
+
+    const result = parseFrontmatter(content);
+    
+    expect(result.frontmatter?.title).toBe("My Project");
+    expect(result.frontmatter?.summary).toBe(
+      "This is a long summary that spans multiple lines in the YAML frontmatter."
+    );
+    expect(result.frontmatter?.approach).toBe(
+      "Start with backend API, then wire up frontend components"
+    );
+    expect(result.frontmatter?.estimatedEffort).toBe("3-5 days");
+  });
+
+  it("should parse frontmatter with multi-line array items", () => {
+    const content = `---
+title: My Project
+assumptions:
+  - CRITICAL:
+      All animations must start visible
+  - CRITICAL: Reduced motion must work
+  - Simple assumption on one line
+---
+# Content`;
+
+    const result = parseFrontmatter(content);
+    
+    expect(result.frontmatter?.title).toBe("My Project");
+    const assumptions = result.frontmatter?.assumptions as string[];
+    expect(assumptions).toHaveLength(3);
+    expect(assumptions[0]).toBe("CRITICAL: All animations must start visible");
+    expect(assumptions[1]).toBe("CRITICAL: Reduced motion must work");
+    expect(assumptions[2]).toBe("Simple assumption on one line");
+  });
+
+  it("should parse frontmatter with open-quoted multi-line inline values", () => {
+    const content = `---
+title: 'Short project
+  with a long name'
+summary: "Another multi-line
+  summary value"
+---
+# Content`;
+
+    const result = parseFrontmatter(content);
+    
+    expect(result.frontmatter?.title).toBe("Short project with a long name");
+    expect(result.frontmatter?.summary).toBe("Another multi-line summary value");
+  });
 });
 
 describe("parseMetadataSections", () => {
@@ -700,5 +761,56 @@ describe("parseMarkdownPlan - edge cases", () => {
     
     expect(result.items).toHaveLength(1);
     expect(result.items[0].description).toBe(longDescription);
+  });
+
+  it("should handle multi-line task descriptions with continuation", () => {
+    const content = `
+- [ ] 1.1.1: **Audit all usage** - Identify all components using
+      the pattern with initial state [effort: S] [risk: L]
+  - First acceptance criterion
+  - Second acceptance criterion
+
+- [ ] 1.1.2: **Analyze presets** - Review PRESETS to
+      understand initial states
+  - Check config file
+`;
+
+    const result = parseMarkdownPlan(content);
+    
+    expect(result.items).toHaveLength(2);
+    
+    // First task: description should include continuation line
+    expect(result.items[0].id).toBe("1.1.1");
+    expect(result.items[0].title).toBe("Audit all usage");
+    expect(result.items[0].description).toBe("Identify all components using the pattern with initial state");
+    expect(result.items[0].effort).toBe("S");
+    expect(result.items[0].risk).toBe("L");
+    expect(result.items[0].acceptanceCriteria).toEqual([
+      "First acceptance criterion",
+      "Second acceptance criterion",
+    ]);
+    
+    // Second task
+    expect(result.items[1].id).toBe("1.1.2");
+    expect(result.items[1].title).toBe("Analyze presets");
+    expect(result.items[1].description).toBe("Review PRESETS to understand initial states");
+    expect(result.items[1].acceptanceCriteria).toEqual([
+      "Check config file",
+    ]);
+  });
+
+  it("should parse effort and risk from continuation lines", () => {
+    const content = `
+- [ ] **Task with metadata on second line** - First part of description
+      and the second part with [effort: M] and [risk: H]
+`;
+
+    const result = parseMarkdownPlan(content);
+    
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].title).toBe("Task with metadata on second line");
+    expect(result.items[0].description).toBe("First part of description and the second part with  and");
+    expect(result.items[0].effort).toBe("M");
+    expect(result.items[0].risk).toBe("H");
   });
 });

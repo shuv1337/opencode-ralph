@@ -104,22 +104,65 @@ export function parseFrontmatter(content: string): {
     return { frontmatter: null, body: content };
   }
   
-  // Parse YAML-like frontmatter (simple key: value pairs)
+  // Parse YAML-like frontmatter (supports multi-line values and array items)
   const frontmatterLines = lines.slice(1, endIndex);
   const frontmatter: Record<string, unknown> = {};
   let currentKey: string | null = null;
   let currentArrayItems: string[] = [];
   
-  for (const line of frontmatterLines) {
+  /**
+   * Collect continuation lines starting at `start`, returning the joined text
+   * and the index of the first non-continuation line.
+   * Continuation lines are lines indented more than `baseIndent`.
+   */
+  function collectContinuation(start: number, baseIndent: number): { text: string; nextIndex: number } {
+    const parts: string[] = [];
+    let j = start;
+    while (j < frontmatterLines.length) {
+      const contLine = frontmatterLines[j];
+      const contTrimmed = contLine.trim();
+      // Stop at empty lines, comments, or lines at/below base indent
+      if (!contTrimmed || contTrimmed.startsWith("#")) { j++; continue; }
+      const contIndent = contLine.length - contLine.trimStart().length;
+      if (contIndent <= baseIndent) break;
+      // Stop if this looks like a new top-level key (unindented key: value)
+      if (contIndent <= baseIndent && contTrimmed.includes(":")) break;
+      parts.push(contTrimmed);
+      j++;
+    }
+    return { text: parts.join(" "), nextIndex: j };
+  }
+  
+  /**
+   * Strip surrounding quotes from a string value and join multi-line quoted strings.
+   */
+  function cleanStringValue(value: string): string {
+    // Remove wrapping single or double quotes
+    return value.replace(/^["']|["']$/g, "").trim();
+  }
+  
+  for (let i = 0; i < frontmatterLines.length; i++) {
+    const line = frontmatterLines[i];
     const trimmed = line.trim();
+    const lineIndent = line.length - line.trimStart().length;
     
     // Skip empty lines and comments
     if (!trimmed || trimmed.startsWith("#")) continue;
     
-    // Check for array item
+    // Check for array item (- value)
     if (trimmed.startsWith("- ")) {
       if (currentKey) {
-        currentArrayItems.push(trimmed.slice(2).trim());
+        let itemText = trimmed.slice(2).trim();
+        
+        // Collect continuation lines for this array item
+        const itemIndent = lineIndent + 2; // indent of the item text after "- "
+        const { text: contText, nextIndex } = collectContinuation(i + 1, itemIndent - 1);
+        if (contText) {
+          itemText += " " + contText;
+        }
+        i = nextIndex - 1; // -1 because for loop increments
+        
+        currentArrayItems.push(cleanStringValue(itemText));
       }
       continue;
     }
@@ -134,11 +177,35 @@ export function parseFrontmatter(content: string): {
     const colonIndex = trimmed.indexOf(":");
     if (colonIndex > 0) {
       const key = trimmed.slice(0, colonIndex).trim();
-      const value = trimmed.slice(colonIndex + 1).trim();
+      let value = trimmed.slice(colonIndex + 1).trim();
       
       currentKey = key;
       
-      if (value) {
+      if (!value) {
+        // No inline value — peek ahead to determine if this is a multi-line string or array
+        let nextNonEmpty = i + 1;
+        while (nextNonEmpty < frontmatterLines.length) {
+          const nextTrimmed = frontmatterLines[nextNonEmpty].trim();
+          if (nextTrimmed && !nextTrimmed.startsWith("#")) break;
+          nextNonEmpty++;
+        }
+        const nextTrimmed = nextNonEmpty < frontmatterLines.length 
+          ? frontmatterLines[nextNonEmpty].trim() 
+          : "";
+        
+        if (nextTrimmed.startsWith("- ")) {
+          // This is an array — let the array parsing handle it on subsequent iterations
+        } else if (nextTrimmed) {
+          // Multi-line string value — collect continuation lines
+          const { text: contText, nextIndex } = collectContinuation(i + 1, lineIndent);
+          if (contText) {
+            value = contText;
+            i = nextIndex - 1;
+            frontmatter[key] = cleanStringValue(value);
+          }
+        }
+        // If still no value, it might be followed by array items (handled next iteration)
+      } else {
         // Handle inline value
         if (value === "true") {
           frontmatter[key] = true;
@@ -147,11 +214,23 @@ export function parseFrontmatter(content: string): {
         } else if (/^\d+$/.test(value)) {
           frontmatter[key] = parseInt(value, 10);
         } else {
-          // Remove quotes if present
-          frontmatter[key] = value.replace(/^["']|["']$/g, "");
+          // Check if the value is an opening quote without a closing quote (multi-line)
+          const isOpenQuote = (value.startsWith("'") && !value.endsWith("'")) ||
+                              (value.startsWith('"') && !value.endsWith('"'));
+          if (isOpenQuote) {
+            // Collect continuation lines
+            const { text: contText, nextIndex } = collectContinuation(i + 1, lineIndent);
+            if (contText) {
+              value += " " + contText;
+              i = nextIndex - 1;
+            }
+            frontmatter[key] = cleanStringValue(value);
+          } else {
+            // Remove quotes if present
+            frontmatter[key] = cleanStringValue(value);
+          }
         }
       }
-      // If no value, it might be followed by array items
     }
   }
   
@@ -247,7 +326,24 @@ export function parseMetadataSections(content: string): {
     
     // Parse assumptions (list items)
     if (inAssumptionsSection && trimmed.match(/^[-*+]\s+(.+)/)) {
-      const assumption = trimmed.replace(/^[-*+]\s+/, "").trim();
+      const listIndent = line.length - line.trimStart().length;
+      let assumption = trimmed.replace(/^[-*+]\s+/, "").trim();
+      
+      // Collect continuation lines
+      while (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const nextTrimmed = nextLine.trim();
+        const nextIndent = nextLine.length - nextLine.trimStart().length;
+        
+        // Stop at empty lines, headers, new list items, or same/less indent
+        if (!nextTrimmed || nextTrimmed.startsWith("#") || nextTrimmed.match(/^[-*+]\s/) || nextIndent <= listIndent) {
+          break;
+        }
+        
+        assumption += " " + nextTrimmed;
+        i++;
+      }
+      
       if (assumption) {
         assumptions.push(assumption);
       }
@@ -256,7 +352,24 @@ export function parseMetadataSections(content: string): {
     
     // Parse risks (simple list or structured)
     if (inRisksSection && trimmed.match(/^[-*+]\s+(.+)/)) {
-      const riskText = trimmed.replace(/^[-*+]\s+/, "").trim();
+      const listIndent = line.length - line.trimStart().length;
+      let riskText = trimmed.replace(/^[-*+]\s+/, "").trim();
+      
+      // Collect continuation lines
+      while (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const nextTrimmed = nextLine.trim();
+        const nextIndent = nextLine.length - nextLine.trimStart().length;
+        
+        // Stop at empty lines, headers, new list items, or same/less indent
+        if (!nextTrimmed || nextTrimmed.startsWith("#") || nextTrimmed.match(/^[-*+]\s/) || nextIndent <= listIndent) {
+          break;
+        }
+        
+        riskText += " " + nextTrimmed;
+        i++;
+      }
+      
       if (riskText) {
         // Try to parse structured risk: "Risk: description (likelihood: L, impact: H, mitigation: ...)"
         const structuredMatch = riskText.match(
@@ -413,7 +526,36 @@ export function parseAcceptanceCriteria(lines: string[], startIndex: number, tas
       if (trimmed.match(/^(?:[-*+]|\d+[.)]) \s*\[[xX ]\]/)) {
         break;
       }
-      const criteriaText = trimmed.replace(/^(?:[-*+]|\d+[.)]) \s*/, "").trim();
+      let criteriaText = trimmed.replace(/^(?:[-*+]|\d+[.)]) \s*/, "").trim();
+      
+      // Collect continuation lines for this criterion
+      while (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const nextTrimmed = nextLine.trim();
+        const nextIndent = nextLine.length - nextLine.trimStart().length;
+        
+        // Stop at empty lines
+        if (!nextTrimmed) break;
+        // Stop at headers
+        if (nextTrimmed.startsWith("#")) break;
+        // Stop at code blocks
+        if (nextTrimmed.startsWith("```")) break;
+        // Stop at new list items (at criteria indent level)
+        if (nextIndent <= currentIndent && nextTrimmed.match(/^(?:[-*+]|\d+[.)])\s/)) break;
+        // Stop at checkbox items at any level
+        if (nextTrimmed.match(/^(?:[-*+]|\d+[.)])\s*\[[xX ]\]/)) break;
+        // Stop if at or below task indent (new task or section)
+        if (nextIndent <= taskIndent) break;
+        
+        // Continuation line (indented deeper than the list marker)
+        if (nextIndent > currentIndent) {
+          criteriaText += " " + nextTrimmed;
+          i++;
+        } else {
+          break;
+        }
+      }
+      
       criteria.push(criteriaText);
       i++;
       continue;
@@ -421,7 +563,27 @@ export function parseAcceptanceCriteria(lines: string[], startIndex: number, tas
     
     // Check for numbered criteria
     if (currentIndent > taskIndent && trimmed.match(/^\d+[.)]\s+(.+)/)) {
-      const criteriaText = trimmed.replace(/^\d+[.)]\s+/, "").trim();
+      let criteriaText = trimmed.replace(/^\d+[.)]\s+/, "").trim();
+      
+      // Collect continuation lines for this criterion
+      while (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const nextTrimmed = nextLine.trim();
+        const nextIndent = nextLine.length - nextLine.trimStart().length;
+        
+        if (!nextTrimmed || nextTrimmed.startsWith("#") || nextTrimmed.startsWith("```")) break;
+        if (nextIndent <= currentIndent && nextTrimmed.match(/^(?:[-*+]|\d+[.)])\s/)) break;
+        if (nextTrimmed.match(/^(?:[-*+]|\d+[.)])\s*\[[xX ]\]/)) break;
+        if (nextIndent <= taskIndent) break;
+        
+        if (nextIndent > currentIndent) {
+          criteriaText += " " + nextTrimmed;
+          i++;
+        } else {
+          break;
+        }
+      }
+      
       criteria.push(criteriaText);
       i++;
       continue;
@@ -678,18 +840,78 @@ export function parseMarkdownPlan(
     const parsedTask = parseTaskLine(line);
     
     if (parsedTask) {
-      // Check for acceptance criteria in following lines
-      const { criteria, endIndex } = parseAcceptanceCriteria(lines, i + 1, lineIndent);
+      // Collect continuation lines (indented text that continues the task description)
+      let continuationEndIndex = i + 1;
+      const continuationLines: string[] = [];
+      
+      while (continuationEndIndex < lines.length) {
+        const contLine = lines[continuationEndIndex];
+        const contTrimmed = contLine.trim();
+        const contIndent = contLine.length - contLine.trimStart().length;
+        
+        // Stop at empty lines
+        if (!contTrimmed) {
+          continuationEndIndex++;
+          continue;
+        }
+        
+        // Stop at code blocks
+        if (contTrimmed.startsWith("```")) {
+          break;
+        }
+        
+        // Stop at headers
+        if (contTrimmed.startsWith("#")) {
+          break;
+        }
+        
+        // Stop at list items with checkboxes (new task)
+        if (contTrimmed.match(/^(?:[-*+]|\d+[.)])\s*\[[xX ]\]/)) {
+          break;
+        }
+        
+        // Stop at ANY list item (these become acceptance criteria, not description continuation)
+        // List items are: - item, * item, + item, 1. item, 2) item
+        if (contTrimmed.match(/^(?:[-*+]|\d+[.)])\s/)) {
+          break;
+        }
+        
+        // If indented more than the task line, it's a continuation
+        if (contIndent > lineIndent) {
+          continuationLines.push(contTrimmed);
+          continuationEndIndex++;
+        } else {
+          // Same or less indent - stop collecting
+          break;
+        }
+      }
+      
+      // Append continuation lines to description
+      let fullDescription = parsedTask.description;
+      if (continuationLines.length > 0) {
+        fullDescription = fullDescription + " " + continuationLines.join(" ");
+      }
+      
+      // Re-parse inline metadata from the full description to catch effort/risk on continuation lines
+      const { cleanText, effort, risk } = parseInlineMetadata(fullDescription);
+      fullDescription = cleanText;
+      
+      // Use effort/risk from continuation lines if not already set
+      const finalEffort = parsedTask.effort || effort;
+      const finalRisk = parsedTask.risk || risk;
+      
+      // Check for acceptance criteria in following lines (starting after continuation lines)
+      const { criteria, endIndex } = parseAcceptanceCriteria(lines, continuationEndIndex, lineIndent);
       
       // Build PRD item
       const item: PrdItem = {
         id: parsedTask.id,
         title: parsedTask.title,
         category: parsedTask.category || currentCategory || options.defaultCategory || "functional",
-        description: parsedTask.description,
+        description: fullDescription,
         passes: parsedTask.done,
-        effort: parsedTask.effort,
-        risk: parsedTask.risk,
+        effort: finalEffort,
+        risk: finalRisk,
       };
       
       // Add acceptance criteria if found
